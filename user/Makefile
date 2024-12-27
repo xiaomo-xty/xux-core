@@ -11,7 +11,8 @@ OBJDUMP := rust-objdump --arch-name=riscv64
 OBJCOPY := rust-objcopy --binary-architecture=riscv64
 
 elf:	
-	@cargo build --release
+	@./scripts/build.sh
+	# @cargo build --release
 
 binary: elf
 	@$(foreach elf, $(ELFS), $(OBJCOPY) $(elf) --strip-all -O binary $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.bin, $(elf));)
@@ -20,7 +21,10 @@ binary: elf
 
 build: binary
 
-.PHONY: test
+.PHONY: test clean
 test:
 	echo $(APPS)
 	echo $(ELFS)
+
+clean:
+	@cargo clean
