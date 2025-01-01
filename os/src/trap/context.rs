@@ -2,12 +2,51 @@ use riscv::register::sstatus::{
     self, Sstatus, SPP
 };
 
+/// Represents the context of a trap (e.g., during an interrupt or system call).
+/// 
+/// The layout of `TrapContext` in memory is as follows:
+/// 
+/// ```text
+/// +--------------------------------------------------------+
+/// |   TrapContext Address (stack top) = sp                 | <- offset 0x0 (stack top)
+/// +--------------------------------------------------------+    (user stack pointer)
+/// |                   General-purpose registers            | 
+/// | ┌─────────────────────────────────────────────────────┐| <- offset 0x0
+/// | │   x[0] (usize)                                      │|
+/// | ├─────────────────────────────────────────────────────┤|
+/// | │   x[1] (usize)                                      │|
+/// | ├─────────────────────────────────────────────────────┤|
+/// | │   x[2] (usize)                                      │|
+/// | ├─────────────────────────────────────────────────────┤|
+/// | │       ...                                           │|
+/// | ├─────────────────────────────────────────────────────┤|
+/// | │   x[30] (usize)                                     │|
+/// | ├─────────────────────────────────────────────────────┤|
+/// | │   x[31] (usize)                                     │|
+/// | └─────────────────────────────────────────────────────┘|
+/// +--------------------------------------------------------+ <- offset 0x100
+/// |                       sstatus (Sstatus)                |    
+/// | ┌─────────────────────────────────────────────────────┐|
+/// | │   sstatus (usize)   (user stack pointer)            │|
+/// | └─────────────────────────────────────────────────────┘|
+/// |    (sstatus stores the previous stack pointer sp,      |
+/// |     saved in sscratch during trap entry)               |
+/// +--------------------------------------------------------+ <- offset 0x108
+/// |                       spec (usize)                     |    
+/// | ┌─────────────────────────────────────────────────────┐|
+/// | │   spec (usize)     (return address)                 │|
+/// | └─────────────────────────────────────────────────────┘|
+/// |   (spec stores the return address for resuming program,|
+/// |   it is restored to sepc in `__restore`` for resuming  |
+/// |   the program after trap handling)                     |
+/// +--------------------------------------------------------+
+/// ```
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct TrapContext {
     pub x: [usize; 32],   // General-purpose registers
     pub sstatus: Sstatus, // Supervisor status register
-    pub spec: usize,      // Special register (could be used for the program counter)
+    pub sepc: usize,      // Special register (could be used for the program counter)
 }
 
 // use crate::batch::TrapContext;
@@ -38,8 +77,9 @@ impl TrapContext {
         let mut ctx = Self {
             x: [0; 32],     // Initialize all general-purpose registers to 0.
             sstatus,        // Set the sstatus register with updated SPP.
-            spec: entry,    // Set the program counter (PC) to the entry point.
+            sepc: entry,    // Set the program counter (PC) to the entry point.
         };
+        
         // Set the stack pointer for the context.
         ctx.set_sp(sp);
         ctx

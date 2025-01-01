@@ -21,6 +21,7 @@ global_asm!(include_str!("trap.S"));
 /// Initialize the CSR `stvec` to point to the trap entry `__alltraps`.
 pub fn init() {
     extern "C" {
+        /// in `trap.S` 
         fn __alltraps();
     }
     unsafe {
@@ -32,12 +33,14 @@ pub fn init() {
 /// The main trap handler function.
 ///
 /// Handles various traps (e.g., exceptions and system calls) and performs the appropriate actions.
+/// Then return to `trap.S` and continue from `__restore`
 /// 
 /// # Arguments
 /// - `ctx`: A mutable reference to the `TrapContext`, which contains the current context of the application.
 ///
 /// # Returns
 /// - Returns a mutable reference to the updated `TrapContext`.
+/// - Then return to `trap.S` and continue from `__restore` 
 #[no_mangle]
 pub fn trap_handler(ctx: &mut TrapContext) -> &mut TrapContext {
     // Read the trap cause and trap value from CSR registers.
@@ -50,7 +53,7 @@ pub fn trap_handler(ctx: &mut TrapContext) -> &mut TrapContext {
         // Handle system calls.
         Trap::Exception(Exception::UserEnvCall) => {
             // Advance the program counter to skip the ecall instruction.
-            ctx.spec += 4;
+            ctx.sepc += 4;
             // Perform the system call and store the result in `a0`.
             ctx.x[10] = syscall(ctx.x[17], [ctx.x[10], ctx.x[11], ctx.x[12]]) as usize;
         },
@@ -89,6 +92,8 @@ pub fn trap_handler(ctx: &mut TrapContext) -> &mut TrapContext {
         }
     }
     // Return the updated trap context.
+    // And then return to trap.S 
+    // and continue from __restore 
     ctx
 }
 

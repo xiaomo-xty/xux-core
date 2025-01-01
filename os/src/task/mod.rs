@@ -3,7 +3,6 @@ mod switch;
 mod task;
 
 pub use context::TaskContext;
-use log::info;
 use crate::{config::*, loader::{get_num_app, init_app_cx}};
 use switch::__switch;
 use task::{TaskControlBlock, TaskStatus};
@@ -29,11 +28,12 @@ lazy_static!{
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInitialized,
-        };MAX_APP_NUM];
+        }; MAX_APP_NUM];
 
 
         for (i, task) in tasks.iter_mut().enumerate() {
-            task.task_cx = TaskContext::goto_restore(init_app_cx(i));
+            let kstack_ptr = init_app_cx(i);
+            task.task_cx = TaskContext::goto_restore(kstack_ptr);
             task.task_status = TaskStatus::Ready;
         }
 
@@ -53,21 +53,25 @@ lazy_static!{
 
 impl TaskManager {
     fn run_first_task(&self) -> ! {
+        log::debug!("Run the first task");
         let mut inner = self.inner.exclusive_access();
         let task0 = &mut inner.tasks[0];
+        // println!("The tasks[0]: {}", task0.task_cx);
+
         task0.task_status = TaskStatus::Running;
         let next_task_cx_ptr = &task0.task_cx as * const TaskContext;
         drop(inner);
 
+        
         let mut _unused = TaskContext::zero_init();
         unsafe {
             // Passing `_unused` as a `*mut TaskContext` 
             // to the `__switch` function 
             // means that the current task's context 
             // will be saved into `_unused`.
-            info!("run first task");
+            log::debug!("switch");
             __switch(&mut _unused as *mut TaskContext, next_task_cx_ptr);
-            info!("switch out from the first task");
+            log::debug!("switch out from the first task");
         }
         unreachable!()
     }
@@ -88,7 +92,7 @@ impl TaskManager {
 
 impl TaskManager {
     fn run_next_task(&self) {
-        info!("Run next task.\n");
+        log::debug!("Run next task.\n");
         if let Some(next) = self.find_next_task() {
             let mut inner = self.inner.exclusive_access();
             let current = inner.current_task;

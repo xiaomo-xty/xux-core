@@ -6,6 +6,9 @@ LOG ?= INFO
 KERNEL_ELF := target/$(TARGET)/$(MODE)/$(OS)
 KERNEL_BIN := $(KERNEL_ELF).bin
 
+KERNEL_ELF_DEBUG := target/$(TARGET)/debug/$(OS)
+KERNEL_BIN_DEBUG := $(KERNEL_ELF_DEBUG).bin
+
 DISASM_TMP = /tmp/asm
 
 
@@ -16,6 +19,7 @@ SBI ?= rustsbi
 
 QEMU_DIR := ../tools/qemu-7.0.0/build
 QEMU := $(QEMU_DIR)/qemu-system-riscv64
+# QEMU := qemu-system-riscv64
 GDB := gdb-multiarch
 
 BOOTLOADER := ../bootloader/$(SBI)-$(BOARD).bin
@@ -89,8 +93,8 @@ endif
 
 debug: build
 	@tmux new-session -d \
-		"$(QEMU) -machine virt -nographic -bios $(BOOTLOADER) -device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA) -s -S" && \
-		tmux split-window -h "$(GDB) -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && \
+		"$(QEMU) -machine virt -nographic -bios $(BOOTLOADER) -device loader,file=$(KERNEL_BIN_DEBUG),addr=$(KERNEL_ENTRY_PA) -s -S" && \
+		tmux split-window -h "$(GDB) -ex 'file $(KERNEL_ELF_DEBUG)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && \
 		tmux -2 attach-session -d
 
 gdb: build

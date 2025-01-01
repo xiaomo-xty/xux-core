@@ -6,6 +6,7 @@ global_asm!(include_str!("switch.S"));
 
 
 extern "C" {
+    /// See src/task/switch.S
     /// Performs a context switch between the current task and the next task.
     ///
     /// This function saves the context of the currently running task (e.g., stack pointer, return address,
@@ -26,6 +27,7 @@ extern "C" {
     /// This function is unsafe because it involves raw pointer dereferencing and manual context manipulation.
     /// Care must be taken to ensure that the task contexts provided are valid and properly aligned.
     ///
+    /// 
     /// # Example
     /// ```rust
     /// let current_task_context: *mut TaskContext = ...;
