@@ -105,6 +105,7 @@ gdb: build
 	
 clean:
 	@cargo clean		
+	@rm src/link_app.S
 
 
 test:

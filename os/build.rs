@@ -27,6 +27,7 @@ fn insert_app_data() -> Result<()>{
     writeln!(
         f,
         r#"
+# Automatically generate through `build.rs`
     .align 3
     .section .data
     .global _num_app

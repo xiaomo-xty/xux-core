@@ -21,7 +21,7 @@ global_asm!(include_str!("trap.S"));
 /// Initialize the CSR `stvec` to point to the trap entry `__alltraps`.
 pub fn init() {
     extern "C" {
-        /// in `trap.S` 
+        /// You can find it in [trap.S](https://github.com/xiaomo-xty/xux-core/blob/main/os/src/trap/trap.S)
         fn __alltraps();
     }
     unsafe {

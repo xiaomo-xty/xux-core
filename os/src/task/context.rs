@@ -44,7 +44,10 @@ impl TaskContext {
     /// A `TaskContext` instance initialized with `ra` set to the address of the `__restore` function, 
     /// `sp` set to the passed `kstack_ptr`, and the `s` register array initialized to zero.
     pub fn goto_restore(kstack_ptr: usize) -> Self {
-        extern "C" {fn __restore();}
+        extern "C" {
+            /// You can find it in [trap.S](https://github.com/xiaomo-xty/xux-core/blob/main/os/src/trap/trap.S)
+            fn __restore();
+        }
         Self {
             ra: __restore as usize,
             sp: kstack_ptr,
