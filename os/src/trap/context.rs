@@ -47,6 +47,9 @@ pub struct TrapContext {
     pub x: [usize; 32],   // General-purpose registers
     pub sstatus: Sstatus, // Supervisor status register
     pub sepc: usize,      // Special register (could be used for the program counter)
+    pub kernel_satp: usize,
+    pub kernel_sp: usize,
+    pub trap_handler: usize,
 }
 
 // use crate::batch::TrapContext;

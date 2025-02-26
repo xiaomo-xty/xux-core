@@ -19,7 +19,7 @@ pub struct TaskManager {
 struct TaskManagerInner {
     tasks: [TaskControlBlock; MAX_APP_NUM],
     current_task: usize,
-}
+}   
 
 
 lazy_static!{

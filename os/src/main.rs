@@ -4,6 +4,7 @@
 #![deny(warnings)]
 #![no_main]
 #![no_std]
+#![feature(alloc_error_handler)]
 // #![feature(panic_info_message)]
 mod console;
 mod lang_iterms;
@@ -17,6 +18,10 @@ mod syscall;
 mod config;
 mod loader;
 mod timer;
+
+extern crate alloc;
+extern crate bitflags;
+mod mm;
 
 #[path = "boards/qemu.rs"]
 mod board;
@@ -69,6 +74,10 @@ pub fn rust_main() -> ! {
         "[kernel] boot_stack top=bottom={:#x}, lower_bound={:#x}",
         boot_stack_top as usize, boot_stack_lower_bound as usize
     );
+
+    mm::heap_allocator::init_heap();
+    mm::heap_allocator::heap_test();
+    mm::page_table::test_PTEFlags();
 
     trap::init();
     loader::load_apps();

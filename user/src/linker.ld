@@ -6,7 +6,7 @@ OUTPUT_ARCH(riscv)
 ENTRY(_start)
 
 /* BASE_ADDRESS Setting */
-BASE_ADDRESS = 0x80400000;
+BASE_ADDRESS = 0x10000;
 
 SECTIONS
 {
@@ -18,22 +18,28 @@ SECTIONS
         *(.text .text.*)
     }
 
+    . = ALIGN(4K)
     .rodata : {
         *(.rodata .rodata.*)
-        *(.srodata .srodata.*)
+        /* *(.srodata .srodata.*) */
     }
 
 
+    /* 
+        The .data and .bss segments 
+        have the same access permissions (read/write), 
+        so there is no need for page alignment between them. 
+    */
+    . = ALIGN(4K)
     .data : {
         *(.data .data.*)
-        *(sdata .sdata.*)
+        /* *(sdata .sdata.*) */
     }
-
     .bss : {
-        start_bss = .;
+        /* start_bss = .; */
         *(.bss .bss.*)
-        *(.sbss .sbss.*)
-        end_bss = .;
+        /* *(.sbss .sbss.*) */
+        /* end_bss = .; */
     }
 
 

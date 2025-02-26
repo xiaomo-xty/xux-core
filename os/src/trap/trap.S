@@ -26,7 +26,9 @@ __alltraps:
     # sscratch -> user stack
 
     // Allocated memory for `TrapContext`
-    addi sp, sp, -34*8
+    # addi sp, sp, -34*8
+    // Now sp->*TrapContext in user space,
+    // sscratch->user stack
 
 # The layout of `TrapContext` in memory is as follows:
 # ---------------------------------------------------------+
@@ -95,13 +97,23 @@ __alltraps:
     csrr t2, sscratch
     sd t2, 2*8(sp)  # Save sscratch (user stack pointer)
 
+    # load kernel_satp into t0
+    ld t0, 34*8(sp)
+    # load trap_handler into t1
+    ld t1, 36*8(sp)
+    # move to kernel_sp
+    ld sp, 35*8(sp)
+    
 
     # ======================STEP [3]=================================
     # |                 Calling trap_handler                        |
     # |_____________________________________________________________|
     # (cx: &mut TrapContext)
-    mv a0, sp
-    call trap_handler
+    
+    # switch to kernel space
+    csrw satp, t0
+    sfence.vma        
+    jr t1
 
 
 
@@ -111,18 +123,22 @@ __alltraps:
 #   ctx_addr: usize
 # __restore(KERNEL_STACK.push_context(...))
 __restore:
-    # mv sp, a0
-    # now sp -> kernel stack(after allocated)
-    # sscratch -> user stack
+    # a0: *TrapContext in user space(Constant);
+    # a1: user space token.
+    # switch to user space
 
-    # Restore the saved context after handling the trap
+    csrw satp, a1
+    sfence.vma
+    csrw sscratch, a0
+    mv sp, a0
+
+    # Now sp points to TrapContext in user space
+    # start restoring based on it
     ld t0, 32*8(sp)   # Restore sstatus
     ld t1, 33*8(sp)   # Restore spec
-    ld t2, 2*8(sp)    # Restore sscratch
 
     csrw sstatus, t0  # Restore sstatus
     csrw sepc, t1     # Restore spec to sepc (return address)
-    csrw sscratch, t2 # Restore sscratch (user stack pointer)
 
     # Restore the general-purpose registers
     # except sp/tp
@@ -135,9 +151,6 @@ __restore:
         .set n, n+1
     .endr
 
-    # Release the `TrapContext` from the stack
-    addi sp, sp, 34*8
-
-    # Switch back to the user stack
-    csrrw sp, sscratch, sp
+    # back to user stack
+    ld sp, 2*8(sp)
     sret
