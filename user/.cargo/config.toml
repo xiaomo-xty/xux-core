@@ -5,7 +5,7 @@ target = "riscv64gc-unknown-none-elf"
 rustflags = [
 
      "-C" , "link-arg=-Tsrc/linker.ld", 
-     "-C" , "force-frame-pointers=yes"
+    #  "-C" , "force-frame-pointers=yes"
 
  ]
 

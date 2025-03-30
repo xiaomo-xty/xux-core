@@ -1,4 +1,4 @@
-use crate::{exit, println};
+use crate::{exit, println, syscall::sys_exit};
 
 #[panic_handler]
 fn panic_handler(panic_info : &core::panic::PanicInfo) -> ! {

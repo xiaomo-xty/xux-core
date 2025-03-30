@@ -5,7 +5,7 @@ use core::arch::asm;
 use user::println;
 
 #[no_mangle]
-fn main() -> i32 {
+unsafe fn main() -> i32 {
     println!("Try to execute privileged instruction in U Mode");
     println!("Kernel should kill this application!");
     unsafe {

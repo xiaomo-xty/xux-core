@@ -1,6 +1,10 @@
 [package]
 name = "user"
+authors = ["Tianyin Xu <little_suns@foxmail.com>"]
 version = "0.1.0"
 edition = "2021"
+
+[profile.release]
+debug = true
 
 [dependencies]

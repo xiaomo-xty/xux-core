@@ -18,10 +18,10 @@ SECTIONS
         *(.text .text.*)
     }
 
-    . = ALIGN(4K)
+    . = ALIGN(4K);
     .rodata : {
         *(.rodata .rodata.*)
-        /* *(.srodata .srodata.*) */
+        *(.srodata .srodata.*)
     }
 
 
@@ -30,15 +30,15 @@ SECTIONS
         have the same access permissions (read/write), 
         so there is no need for page alignment between them. 
     */
-    . = ALIGN(4K)
+    . = ALIGN(4K);
     .data : {
         *(.data .data.*)
-        /* *(sdata .sdata.*) */
+        *(sdata .sdata.*)
     }
     .bss : {
         /* start_bss = .; */
         *(.bss .bss.*)
-        /* *(.sbss .sbss.*) */
+        *(.sbss .sbss.*)
         /* end_bss = .; */
     }
 
