@@ -12,22 +12,47 @@ static mut HEAP_SPACE: [u8; KERNEL_HEAP_SIZE] = [0; KERNEL_HEAP_SIZE];
 
 #[alloc_error_handler]
 pub fn handle_alloc_error(layout: core::alloc::Layout) -> !{
+    let allocator = HEAP_ALLOCATOR.lock();
+    let used_total = allocator.stats_alloc_actual();
+    let used_user = allocator.stats_alloc_user();
+    let total = allocator.stats_total_bytes();
+    let free = total - used_total;
+    log::error!(
+        "Heap allocation failed:
+        [Requested]:
+            size:        {:>10.2} bytes
+            align:       {:>10.2} 
+        [Heap usage]:
+            Used (total):{:>10.2} bytes
+            Used (user): {:>10.2} bytes
+            Free:        {:>10.2} bytes
+            Total:       {:>10.2} bytes",
+        layout.size(),  // allocating request size
+        layout.align(), // align format
+        used_total,     // used total
+        used_user,
+        free,
+        total
+    );
     panic!("Heap allocation error, layout = {:?}", layout);
 }
 
 #[allow(static_mut_refs)]
 pub fn init_heap() {
+    log::info!("heap allocator initializing.");
     unsafe {
         HEAP_ALLOCATOR.
             lock().
             init(HEAP_SPACE.as_ptr() as usize, KERNEL_HEAP_SIZE);
     }
+    log::info!("heap allocator initialized successfully.");
 }
 
 
 
 #[allow(unused)]
 pub fn heap_test() {
+    log::info!("==========heap test start================");
     use alloc::boxed::Box;
     use alloc::vec::Vec;
     extern "C" {
@@ -42,7 +67,10 @@ pub fn heap_test() {
     println!("a at {:#X}",&(a.as_ref() as *const _ as usize));
     assert!(bss_range.contains(&(a.as_ref() as *const _ as usize)));
     drop(a);
+
+    log::info!("Vec::new()");
     let mut v: Vec<usize> = Vec::new();
+    log::info!("push 500 usize");
     for i in 0..500 {
         v.push(i);
     }
@@ -53,5 +81,5 @@ pub fn heap_test() {
 
     assert!(bss_range.contains(&(v.as_ptr() as usize)));
     drop(v);
-    println!("heap_test passed!");
+    log::info!("==============heap_test passed!=========================");
 }

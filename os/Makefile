@@ -6,6 +6,12 @@ LOG ?= INFO
 KERNEL_ELF := target/$(TARGET)/$(MODE)/$(OS)
 KERNEL_BIN := $(KERNEL_ELF).bin
 
+KERNEL_TEST_ELF := $(shell find target/$(TARGET)/debug/deps \
+						   		-name '$(OS)-*' \
+								! -name '*.d' \
+								| head -n 1)
+KERNEL_TEST_BIN := target/$(TARGET)/debug/deps/$(OS)-bin
+
 KERNEL_ELF_DEBUG := target/$(TARGET)/debug/$(OS)
 KERNEL_BIN_DEBUG := $(KERNEL_ELF_DEBUG).bin
 
@@ -60,6 +66,7 @@ build: $(KERNEL_BIN)
 # 	@rm src/linker.ld
 
 kernel:
+	@cd ../user && make build MODE=$(MODE)
 	@echo Platform: $(BOARD)
 	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/linker.ld.template > src/linker.ld
 	@LOG=$(LOG) cargo build $(MODE_ARG)
@@ -88,29 +95,49 @@ else
 	@mv $(BOOTLOADER).copy $(KERNEL_BIN)
 	@sudo chmod 777 $(K210-SERIALPORT)
 	python3 $(KFLASH) -p $(K210-SERIALPORT) -b 1500000 $(KERNEL_BIN)
-	python3 -m serial.tools.miniterm --eol LF --dtr 0 --rts 0 --filter direct $(K210-SERIALPORT) 115200
+	python3 -m serial.tools.miniterm \
+			--eol LF \
+			--dtr 0 \
+			--rts 0 \
+			--filter direct $(K210-SERIALPORT) 115200
 endif
 
 debug: build
 	@tmux new-session -d \
 		"$(QEMU) -machine virt -nographic -bios $(BOOTLOADER) -device loader,file=$(KERNEL_BIN_DEBUG),addr=$(KERNEL_ENTRY_PA) -s -S" && \
-		tmux split-window -h "$(GDB) -ex 'file $(KERNEL_ELF_DEBUG)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'" && \
+		tmux split-window -h "$(GDB) -ex 'file $(KERNEL_ELF_DEBUG)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234' -ex 'source ./scripts/debug.gdb'" && \
 		tmux -2 attach-session -d
 
 gdb: build
-	$(GDB) \
+	$(GDB) --verbose \
 		-ex 'file target/$(TARGET)/debug/os.bin' \
 		-ex 'set arch riscv:rv64' \
-		-ex 'target remote localhost:1234'
+		-ex 'target remote localhost:1234'\
+		-ex 'source ./scripts/debug.gdb'
 	
 clean:
+	@cd ../user && make clean
 	@cargo clean		
 	@rm src/link_app.S
 
 
-test:
-	@echo $(BOARD)
-	@echo "Bootloader size in dec: $(BOOTLOADER_SIZE)"
+build-tests: 
+	@cd ../user && make build
+	@echo Platform: $(BOARD)
+	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/linker.ld.template > src/linker.ld
+	@LOG=$(LOG) cargo build --tests
+	@rm src/linker.ld
+	echo $(KERNEL_TEST_ELF)
+	@$(OBJCOPY) $(KERNEL_TEST_ELF) --strip-all -O binary $(KERNEL_TEST_BIN)
+
+# Run tests in QEMU
+test: build-tests
+	@echo "Running tests in QEMU..."
+	$(QEMU) \
+		-machine virt \
+		-nographic \
+		-bios $(BOOTLOADER) \
+		-device loader,file=$(KERNEL_TEST_BIN),addr=$(KERNEL_ENTRY_PA)
 	
 disasm: kernel
 	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) | less

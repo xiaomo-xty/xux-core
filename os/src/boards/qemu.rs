@@ -16,3 +16,9 @@
 /// every second by 1,000,000 cycles, which serves as the base for time calculations
 /// and interrupt triggers for scheduling and task management.
 pub const CLOCK_FREQ: usize = 12500000;
+
+
+/// [start, size]
+pub const MMIO: &[(usize, usize)] = &[
+    (0x0010_0000, 0x00_2000), // VIRT_TEST/RTC  in virt machine
+];

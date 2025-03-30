@@ -17,9 +17,14 @@ SECTIONS
     stext = .;
     .text : {
         *(.text.entry)
+
+        /*定义一个strampoline符号
+        将其对齐到4K边界，
+        预计存放 .text.trampoline 所标识的跳板代码*/
         . = ALIGN(4K);
+        strampoline = .;
         *(.text.trampoline);
-        . = ALIGN(4K)
+        . = ALIGN(4K);
         *(.text .text.*)
     }
 
@@ -42,7 +47,9 @@ SECTIONS
     }
 
     /* End of data*/
+    . = ALIGN(4K);
     edata = .;
+    sbss_with_stack = .;
     .bss : {
         /* The .bss.stack section is outside 
          * the memory range defined by .sbss and .ebss */

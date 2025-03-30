@@ -13,6 +13,7 @@ lazy_static! {
 }
 
 pub fn init_frame_allocator() {
+    log::info!("Frame allocator initializing.");
     extern "C" {
         fn ekernel();
     }
@@ -20,6 +21,8 @@ pub fn init_frame_allocator() {
     FRAME_ALLOCATOR
         .exclusive_access()
         .init(PhysAddr::from(ekernel as usize).up_to_ppn(), PhysAddr::from(MEMORY_END).down_to_ppn());
+
+        log::info!("Frame allocator initialized successfully.");
 }
 
 pub fn frame_alloc() -> Option<FrameTracker> {

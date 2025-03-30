@@ -3,8 +3,6 @@ use core::arch::global_asm;
 
 global_asm!(include_str!("switch.S"));
 
-
-
 extern "C" {
     /// You can find it in [switch.S](https://github.com/xiaomo-xty/xux-core/blob/main/os/src/task/switch.S)
     /// Performs a context switch between the current task and the next task.

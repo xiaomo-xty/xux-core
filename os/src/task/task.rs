@@ -1,10 +1,13 @@
-use crate::{mm::{address::PhysPageNum, memory_set::{MapPermission, MemorySet}, KERNEL_SPACE}, trap::{trap_handler, TrapContext}};
+use crate::{config::TRAP_CONTEXT, mm::{
+    address::{PhysPageNum, VirtAddr}, map_area::MapPermission, memory_set::MemorySet, KERNEL_SPACE
+}, trap::{trap_handler, TrapContext}
+};
 
 use super::{kernel_stack_position, TaskContext};
 
 #[derive(Copy, Clone, PartialEq)]
 pub enum TaskStatus {
-    UnInitialized,
+    // UnInitialized,
     Ready,
     Running,
     Exited,
@@ -18,8 +21,8 @@ pub struct TaskControlBlock {
 
     #[allow(unused)]
     pub base_size: usize,
-    pub heap_bottom: usize,
-    pub program_brk: usize,
+    // pub heap_bottom: usize,
+    // pub program_brk: usize,
 }
 
 
@@ -66,7 +69,7 @@ impl TaskControlBlock {
             KERNEL_SPACE.exclusive_access().token(),
             kernel_stack_top,
             trap_handler as usize,
-        )
+        );
         task_control_block
     }
 

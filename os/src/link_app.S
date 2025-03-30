@@ -1,5 +1,4 @@
 
-# Automatically generate through `build.rs`
     .align 3
     .section .data
     .global _num_app
@@ -18,55 +17,63 @@ _num_app:
     .section .data
     .global app_0_start
     .global app_0_end
+    .align 3
 app_0_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/hello_world.bin"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/hello_world"
 app_0_end:
 
     .section .data
     .global app_1_start
     .global app_1_end
+    .align 3
 app_1_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/no_main.bin"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/no_main"
 app_1_end:
 
     .section .data
     .global app_2_start
     .global app_2_end
+    .align 3
 app_2_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/power_3.bin"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/power_3"
 app_2_end:
 
     .section .data
     .global app_3_start
     .global app_3_end
+    .align 3
 app_3_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/power_5.bin"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/power_5"
 app_3_end:
 
     .section .data
     .global app_4_start
     .global app_4_end
+    .align 3
 app_4_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/power_7.bin"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/power_7"
 app_4_end:
 
     .section .data
     .global app_5_start
     .global app_5_end
+    .align 3
 app_5_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/priv_inst.bin"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/priv_inst"
 app_5_end:
 
     .section .data
     .global app_6_start
     .global app_6_end
+    .align 3
 app_6_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sleep.bin"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/sleep"
 app_6_end:
 
     .section .data
     .global app_7_start
     .global app_7_end
+    .align 3
 app_7_start:
-    .incbin "../user/target/riscv64gc-unknown-none-elf/release/store_fault.bin"
+    .incbin "../user/target/riscv64gc-unknown-none-elf/release/store_fault"
 app_7_end:
