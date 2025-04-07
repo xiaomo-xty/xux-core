@@ -6,5 +6,9 @@ use user::println;
 #[no_mangle]
 fn main() -> i32{
     println!("hello world");
+
+    for i in 0..900 {
+        println!("{}", i);
+    }
     0
 }

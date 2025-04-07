@@ -30,7 +30,6 @@ mod timer;
 mod test_framwork;
 
 extern crate alloc;
-extern crate bitflags;
 mod mm;
 
 #[path = "boards/qemu.rs"]

@@ -88,7 +88,7 @@ impl MemorySet {
     }
 
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
-        self.page_table.translate(vpn)
+        self.page_table.find_pte_by_vpn(vpn)
     }
 }
 
@@ -288,7 +288,7 @@ pub fn remap_test() {
     assert_eq!(
         kernel_space
             .page_table
-            .translate(mid_text.down_to_vpn())
+            .find_pte_by_vpn(mid_text.down_to_vpn())
             .unwrap()
             .writable(),
         false
@@ -297,7 +297,7 @@ pub fn remap_test() {
     assert_eq!(
         kernel_space
             .page_table
-            .translate(mid_rodata.down_to_vpn())
+            .find_pte_by_vpn(mid_rodata.down_to_vpn())
             .unwrap()
             .writable(),
         false
@@ -306,7 +306,7 @@ pub fn remap_test() {
     assert_eq!(
         kernel_space
             .page_table
-            .translate(mid_data.down_to_vpn())
+            .find_pte_by_vpn(mid_data.down_to_vpn())
             .unwrap()
             .executable(),
         false

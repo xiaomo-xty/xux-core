@@ -1,8 +1,14 @@
 use super::address::VirtAddr;
 
+#[allow(unused)]
+
 /// 内存操作错误类型（跨架构通用）
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MemoryError {
+    InvalidEntry,   // PTE存在但Valid=0
+    OutOfMemory,
+
+    PermissionDenied, // 权限检查失败
     /// 地址越界（用户/内核空间）
     /// - `address`: 违规地址
     /// - `max_valid`: 该空间的最大合法地址
@@ -23,7 +29,7 @@ pub enum MemoryError {
     
     /// 页表项未映射或无效
     /// - `pte_addr`: 页表项物理地址
-    PageNotMapped(usize),
+    PageNotMapped,
     
     /// 地址对齐错误（如非页对齐的 DMA 操作）
     /// - `address`: 未对齐地址

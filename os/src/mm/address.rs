@@ -1,4 +1,4 @@
-use core::fmt::{self, Debug};
+use core::{fmt::{self, Debug}, ops::Add};
 
 use crate::config::*;
 
@@ -108,32 +108,76 @@ impl From<VirtPageNum> for usize {
 
 // const PAGE_SIZE_MASK: usize = PAGE_SIZE - 1;
 impl VirtAddr {
+    /// Maximum allowable virtual address (architecture-dependent)
     pub const MAX: VirtAddr = VirtAddr(MAX_VA);
 
-    /// 37:0 all 1
+    /// Maximum user-space virtual address (bits 37:0 all 1 for Sv39)
+    /// This represents the highest address accessible in user mode
     pub const USER_MAX: VirtAddr = VirtAddr((1<< (VA_WIDTH - 1)) - 1);
 
+    /// Creates a new virtual address from raw usize value
+    /// 
+    /// # Arguments
+    /// * `addr` - Raw virtual address value
+    /// 
+    /// # Note
+    /// Does not perform any validity checks on the address
+    pub fn new(addr: usize) -> Self{
+        Self(addr)
+    }
+
+
+    /// Rounds down to the nearest page-aligned address
+    /// 
+    /// # Example
+    /// ```
+    /// let addr = VirtAddr::new(0x1234_5678);
+    /// assert_eq!(addr.round_down(), VirtAddr::new(0x1234_5000));
+    pub fn round_down(&self) -> Self {
+        Self ( self.0 & !(OFFSET_MASK) ) 
+    }
+
+    /// Converts to virtual page number by truncating lower bits
+    /// (Equivalent to floor(address / PAGE_SIZE))
     pub fn down_to_vpn(&self) -> VirtPageNum {
         VirtPageNum(self.0 / PAGE_SIZE)
     }
 
+    /// Converts to virtual page number by rounding up
+    /// (Equivalent to ceil(address / PAGE_SIZE))
     pub fn up_to_vpn(&self) -> VirtPageNum {
         VirtPageNum((self.0 + PAGE_SIZE - 1) / PAGE_SIZE)
     }
 
+    /// Extracts the page offset portion of the address
+    /// (Lower bits not used for page number translation)
     pub fn page_offset(&self)  -> usize{
         self.0 & OFFSET_MASK
     }
 
+    /// Checks if the address is page-aligned
     pub fn aligned(&self) -> bool {
         self.page_offset() == 0
     }
 
+    /// Determines if this is a valid user-space address
+    /// 
+    /// # Architecture Notes
+    /// For Sv39:
+    /// - Valid user addresses have bits 63:39 equal to 0
+    /// - The user/kernel bit (bit 63 in Sv39) must be 0
     pub fn is_user(&self) -> bool {
         let high_bits_is_valid = (self.0 & HIGH_BITS_MASK) == VALID_USER_HIGH_BITS;
         let is_in_user = (self.0 >> USER_HIGH_BIT) & 1;
         high_bits_is_valid && is_in_user == 0
     }
+
+    /// Determines if this is a valid kernel-space address
+    /// 
+    /// # Architecture Notes
+    /// For Sv39:
+    /// - Valid kernel addresses have bits 63:39 equal to 0x1FFFF (sign-extended)
+    /// - The user/kernel bit (bit 63 in Sv39) must be 1
     pub fn is_kernel(&self) -> bool {
         let high_bits_is_valid = (self.0 & HIGH_BITS_MASK) == VALID_KERNEL_HIGH_BITS;
         let is_in_kernel = (self.0 >> KERNEL_HIGH_BIT) & 1 != 0;
@@ -185,6 +229,14 @@ impl From<PhysAddr> for PhysPageNum {
 impl From<PhysPageNum> for PhysAddr {
     fn from(value: PhysPageNum) -> Self {
         Self(value.0 << PAGE_SIZE_BITS)
+    }
+}
+
+impl Add<usize> for PhysAddr {
+    type Output = Self;
+
+    fn add(self, offset: usize) -> Self::Output {
+        Self(self.0 + offset)
     }
 }
 
@@ -402,6 +454,8 @@ where
 
 /// a simple range structure for virtual page number
 pub type VPNRange = SimpleRange<VirtPageNum>;
+
+
 
 #[test_case]
 fn test_virt_addr() {
