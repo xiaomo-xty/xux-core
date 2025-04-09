@@ -1,7 +1,7 @@
 // #![no_std]
 use proc_macro::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_macro_input, Expr, ItemFn, FnArg, Ident, ReturnType};
+use syn::{parse_macro_input, Expr, ItemFn, FnArg, ReturnType};
 use syn::spanned::Spanned;
 
 

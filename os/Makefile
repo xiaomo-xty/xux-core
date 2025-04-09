@@ -6,9 +6,11 @@ LOG ?= INFO
 KERNEL_ELF := target/$(TARGET)/$(MODE)/$(OS)
 KERNEL_BIN := $(KERNEL_ELF).bin
 
+
 KERNEL_TEST_ELF := $(shell find target/$(TARGET)/debug/deps \
 						   		-name '$(OS)-*' \
 								! -name '*.d' \
+								! -name '*-bin' \
 								| head -n 1)
 KERNEL_TEST_BIN := target/$(TARGET)/debug/deps/$(OS)-bin
 
@@ -126,14 +128,15 @@ clean:
 	@rm src/link_app.S
 
 
-build-tests: 
+build-tests:
 	@cd ../user && make build
 	@echo Platform: $(BOARD)
 	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/$(LINKER_SCRIPT_TEMPLATE) > src/$(LINKER_SCRIPT)
-	@LOG=$(LOG) cargo build --tests
+	@LOG=$(LOG) cargo build --tests --features test
 	@rm src/$(LINKER_SCRIPT)
-	echo $(KERNEL_TEST_ELF)
-	@$(OBJCOPY) $(KERNEL_TEST_ELF) --strip-all -O binary $(KERNEL_TEST_BIN)
+	@echo $(KERNEL_TEST_ELF)
+	@echo $(KERNEL_TEST_BIN)
+	$(OBJCOPY) $(KERNEL_TEST_ELF) --strip-all -O binary $(KERNEL_TEST_BIN)
 
 # Run tests in QEMU
 test: build-tests
@@ -142,7 +145,8 @@ test: build-tests
 		-machine virt \
 		-nographic \
 		-bios $(BOOTLOADER) \
-		-device loader,file=$(KERNEL_TEST_BIN),addr=$(KERNEL_ENTRY_PA)
+		-device loader,file=$(KERNEL_TEST_BIN),addr=$(KERNEL_ENTRY_PA) || rm $(KERNEL_TEST_BIN)
+	
 	
 disasm: kernel
 	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) | less
