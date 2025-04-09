@@ -82,7 +82,7 @@ impl MapArea {
         loop {
             let src = &data[start .. len.min(start + PAGE_SIZE)];
             let dst = &mut page_table
-                .translate(current_vpn)
+                .find_pte_by_vpn(current_vpn)
                 .unwrap()
                 .ppn()
                 .get_bytes_array_slice()[..src.len()];

@@ -1,6 +1,7 @@
 mod context;
 mod switch;
 mod task;
+mod syscall;
 
 use alloc::vec::Vec;
 pub use context::TaskContext;

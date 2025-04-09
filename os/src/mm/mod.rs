@@ -4,7 +4,8 @@ pub mod address;
 pub mod page_table;
 pub mod frame_allocator;
 pub mod map_area;
-// pub mod error;
+pub mod user_ptr;
+mod error;
 // pub mod user;
 // mod buffer;
 

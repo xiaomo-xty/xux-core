@@ -50,3 +50,7 @@ pub fn get_time() -> isize {
     sys_get_time()
 }
 
+pub fn test_syscall(buf: &[u8]) -> isize {
+    sys_test(buf.as_ptr() as usize, buf.len())
+}
+

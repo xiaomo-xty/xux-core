@@ -32,9 +32,14 @@ BOOTLOADER := ../bootloader/$(SBI)-$(BOARD).bin
 BOOTLOADER_SIZE_HEX := 0x20000
 BOOTLOADER_SIZE := $(shell printf "%d\n" $(BOOTLOADER_SIZE_HEX))
 
+# compiling
+
 ifeq ($(MODE), release)
 	MODE_ARG := --release
 endif
+
+LINKER_SCRIPT_TEMPLATE = template.linker.ld
+LINKER_SCRIPT = $(subst template.,,$(LINKER_SCRIPT_TEMPLATE))
 
 # KERNEL ENTRY
 QEMU_ENTRY := 0x80200000
@@ -68,9 +73,9 @@ build: $(KERNEL_BIN)
 kernel:
 	@cd ../user && make build MODE=$(MODE)
 	@echo Platform: $(BOARD)
-	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/linker.ld.template > src/linker.ld
+	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/$(LINKER_SCRIPT_TEMPLATE) > src/$(LINKER_SCRIPT)
 	@LOG=$(LOG) cargo build $(MODE_ARG)
-	@rm src/linker.ld
+	@rm src/$(LINKER_SCRIPT)
 
 $(KERNEL_BIN): kernel
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
@@ -124,9 +129,9 @@ clean:
 build-tests: 
 	@cd ../user && make build
 	@echo Platform: $(BOARD)
-	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/linker.ld.template > src/linker.ld
+	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/$(LINKER_SCRIPT_TEMPLATE) > src/$(LINKER_SCRIPT)
 	@LOG=$(LOG) cargo build --tests
-	@rm src/linker.ld
+	@rm src/$(LINKER_SCRIPT)
 	echo $(KERNEL_TEST_ELF)
 	@$(OBJCOPY) $(KERNEL_TEST_ELF) --strip-all -O binary $(KERNEL_TEST_BIN)
 

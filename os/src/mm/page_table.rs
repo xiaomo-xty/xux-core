@@ -5,18 +5,19 @@
 //! The page table also supports manual creation of page tables based on a provided SATP (Supervisor Address Translation and Protection) token.
 //! A custom frame allocator (`frame_alloc`) is used to allocate new frames for page table entries as needed.
 
+use core::ptr;
+
 use alloc::vec;
 use alloc::vec::Vec;
 
 use bitflags::*;
 
 // Constants related to SATP (used to mask the PPN in the SATP register)
-use crate::config::{PPN_MASK, SATP_PPN_MASK};
+use crate::config::{PAGE_SIZE, PPN_MASK, SATP_PPN_MASK};
 
 // Related modules for address and frame allocation
 use super::{
-    address::{PhysPageNum, StepByOne, VirtAddr, VirtPageNum},
-    frame_allocator::{frame_alloc, FrameTracker},
+    address::{PhysAddr, PhysPageNum, StepByOne, VirtAddr, VirtPageNum}, error::MemoryError, frame_allocator::{frame_alloc, FrameTracker}
 };
 
 // Define the PTEFlags bitflags for page table entry attributes
@@ -164,6 +165,7 @@ impl PageTableEntry {
 #[allow(non_snake_case)]
 #[test_case]
 pub fn test_PTEFlags() {
+    use crate::println;
     let empty_flag = PTEFlags::empty();
     println!("{}", empty_flag.bits());
 }
@@ -256,10 +258,7 @@ impl PageTable {
             frames: vec![frame],
         }
     }
-}
 
-// Operations for mapping, unmapping, and translating virtual pages
-impl PageTable {
     /// Maps a virtual page number (VPN) to a physical page number (PPN) with given flags.
     ///
     /// This method finds or creates a page table entry for the given VPN. If the VPN is not already
@@ -319,94 +318,98 @@ impl PageTable {
 
 // Internal helper functions for managing page table entries (PTEs)
 impl PageTable {
-
-     /// Finds an existing page table entry (PTE) or creates a new one if necessary.
+    /// Traverses the page table hierarchy to find or create a valid Page Table Entry (PTE) for the given virtual page.
     ///
-    /// This method traverses the multi-level page table hierarchy, starting from the root page table,
-    /// and either returns an existing PTE or creates new entries as needed. It allocates frames for
-    /// new entries when necessary and adds them to the list of frames.
+    /// This function walks through the multi-level page table structure starting from the root page table.
+    /// If any intermediate page table entry is invalid, it allocates a new physical frame and initializes the entry.
+    /// The final PTE is guaranteed to be valid (with V flag set) when returned.
     ///
-    /// The traversal follows the page table levels (PGD, PMD, PTE) based on the virtual page number (VPN).
-    /// If a PTE is found at the final level, it is returned. If any intermediate level entry is invalid,
-    /// a new frame is allocated and the entry is initialized.
-    ///
-    /// # Parameters
-    /// - `vpn`: The virtual page number whose page table entry (PTE) is to be found or created.
+    /// # Arguments
+    /// * `vpn` - The virtual page number to look up or create
     ///
     /// # Returns
-    /// - An `Option` containing a mutable reference to the `PageTableEntry` if found or created.
-    /// - Returns `None` if the traversal completes without finding or creating a PTE (though this should
-    ///   not happen in a valid page table traversal).
-    fn find_pte_or_create(&mut self, vpn: VirtPageNum) -> Option<&mut PageTableEntry> {
-        // assert!(VirtAddr::from(vpn) < VirtAddr::MAX);
+    /// - `Ok(&mut PageTableEntry)` - A mutable reference to the valid PTE
+    /// - `Err(MemoryError::OutOfMemory)` - If physical frame allocation fails
+    ///
+    /// # Panics
+    /// - If the page table iterator doesn't terminate at PPte level (indicating implementation error)
+    ///
+    /// # Safety
+    /// - The caller must ensure the virtual address is properly aligned
+    /// - Concurrent modifications to page tables may cause undefined behavior
+    fn find_pte_or_create(&mut self, vpn: VirtPageNum) -> Result<&mut PageTableEntry, MemoryError> {
 
         let mut ppn = self.root_ppn;
 
-        vpn.get_ptl_iter().
-            find_map(|ptl| { 
-                let ptes = ppn.get_ptes_slice();
+        for ptl in vpn.get_ptl_iter() {
+            let ptes = ppn.get_ptes_slice();
                 match ptl {
                     PageTableLevel::Pgd(idx) | PageTableLevel::Pmd(idx) => {
                         let pte = &mut ptes[idx]; // Get the entry at the current level
 
                         if !pte.is_valid() {
                             // If the entry is invalid, allocate a new frame and initialize the entry
-                            let frame = frame_alloc().unwrap();
+                            let frame = frame_alloc().ok_or(MemoryError::OutOfMemory)?;
                             pte.update(frame.ppn, PTEFlags::V);
                             self.frames.push(frame);
                         }
 
                         // Move to the next level ppn
                         ppn = pte.ppn();
-                        None
                     },
                     PageTableLevel::PPte(idx) => {
                         let pte = &mut ptes[idx];
                         // PTE level: return the entry
-                        Some(pte)
+                        return Ok(pte);
                     }
                 }
-
-            }// PGD or PMD level
-        )
+        };
+        unreachable!("Page table iterator must end with PPte level")
     }
 
-    /// Finds the page table entry (PTE) for a given virtual page number (VPN).
+
+    /// Searches for an existing Page Table Entry (PTE) for the given virtual page without modification.
     ///
-    /// This method traverses the page table hierarchy and returns a reference to the page table entry
-    /// for the given VPN. It stops at the last level of the page table hierarchy, which is where the actual
-    /// page mapping exists. If an invalid entry is encountered at any level, `None` is returned.
+    /// Performs a read-only traversal of the page table hierarchy. Returns None if:
+    /// - Any intermediate page table entry is invalid
+    /// - The virtual page is not mapped
+    /// - The address is not properly aligned (implementation dependent)
     ///
-    /// # Parameters:
-    /// - `vpn`: The virtual page number whose page table entry (PTE) is to be found.
+    /// # Arguments
+    /// * `vpn` - The virtual page number to look up
     ///
-    /// # Returns:
-    /// - An `Option` containing a mutable reference to the `PageTableEntry` if found, or `None` if invalid.
+    /// # Returns
+    /// - `Some(&mut PageTableEntry)` - Reference to the found PTE (if valid and present)
+    /// - `None` - If the page is not mapped or traversal fails
+    ///
+    /// # Note
+    /// - Unlike `find_pte_or_create`, this will never allocate new frames or modify page tables
+    /// - The returned PTE may still be invalid (caller should check flags if needed)
     fn find_pte(&self, vpn: VirtPageNum) -> Option<&mut PageTableEntry> {
+
         let mut ppn = self.root_ppn;
-        vpn.get_ptl_iter().
-            find_map(|ptl| { 
-                let ptes = ppn.get_ptes_slice();
+
+        for ptl in vpn.get_ptl_iter() {
+            let ptes = ppn.get_ptes_slice();
                 match ptl {
                     PageTableLevel::Pgd(idx) | PageTableLevel::Pmd(idx) => {
                         let pte = ptes[idx]; // Get the entry at the current level
 
                         if !pte.is_valid() {
-                            return  Some(None);
+
+                            return None;
                         }
                         // Move to the next level ppn
                         ppn = pte.ppn();
-                        None
                     },
                     PageTableLevel::PPte(idx) => {
                         let pte = &mut ptes[idx];
                         // PTE level: return the entry
-                        Some(Some(pte))
+                        return Some(pte);
                     }
                 }
-
-            }// PGD or PMD level
-        )?
+        };
+        None
     }
 
     /// Creates a page table from a given SATP token.
@@ -439,13 +442,28 @@ impl PageTable {
     ///
     /// # Returns:
     /// - An `Option` containing a `PageTableEntry` if found and valid, otherwise `None`.
-    pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
+    pub fn find_pte_by_vpn(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.find_pte(vpn).map(|pte| pte.clone()) // If found, return a copy of the PTE
+    }
+
+    #[allow(unused)]
+    pub fn translate_va(&self, va: VirtAddr) ->Option<PhysAddr> {
+        let pte = match self.find_pte_by_vpn(va.into()) {
+            Some(pte) => pte,
+            None => return None,
+        };
+
+        let pa: PhysAddr = pte.ppn().into();
+
+
+        Some(pa + va.page_offset())
     }
 }
 
 /// translate a pointer to a mutable u8 Vec through page table
-pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&'static mut [u8]> {
+/// no consider to multiple threads
+#[allow(unused)]
+pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Option<Vec<&'static mut [u8]>> {
     let page_table = PageTable::from_token(token);
     let mut start = ptr as usize;
     // [start, start+len)
@@ -455,7 +473,7 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
     while start < end {
         let start_va = VirtAddr::from(start);
         let mut vpn = start_va.down_to_vpn();
-        let ppn = page_table.translate(vpn).unwrap().ppn();
+        let ppn = page_table.find_pte_by_vpn(vpn).unwrap().ppn();
         vpn.step();
         let mut end_va: VirtAddr = vpn.into();
         end_va = end_va.min(VirtAddr::from(end));
@@ -466,5 +484,50 @@ pub fn translated_byte_buffer(token: usize, ptr: *const u8, len: usize) -> Vec<&
         }
         start = end_va.into();
     }
-    v
+    Some(v)
+}
+
+pub fn copy_from_user(
+    token: usize, 
+    ker_dest: *mut u8, 
+    user_src: *const u8, 
+    len: usize
+) -> Result<(), MemoryError>{
+    let page_table = PageTable::from_token(token);
+    let mut remaining = len;
+    let mut current_dest = ker_dest;
+    let mut current_src = user_src;
+
+    while remaining > 0 {
+        // 1. 获取当前页的起始地址和偏移量
+        let src_va = VirtAddr::new(current_src as usize);
+        let page_start = src_va.round_down();
+        let offset = src_va.page_offset();
+        let bytes_to_copy = core::cmp::min(PAGE_SIZE - offset, remaining);
+
+        // 2. 翻译用户虚拟地址到物理地址
+        let pte = page_table
+            .find_pte_by_vpn(page_start.into())
+            .ok_or(MemoryError::PageNotMapped)?;
+
+        // 4. 计算物理地址并执行复制
+        let phys_addr: PhysAddr = PhysAddr::from(pte.ppn()) + offset;
+        unsafe {
+            // 注意：这里假设 phys_addr 可以直接访问（需要物理内存映射）
+            ptr::copy_nonoverlapping(
+                usize::from(phys_addr) as *mut u8,
+                current_dest,
+                bytes_to_copy,
+            );
+        }
+
+        // 5. 更新指针和剩余长度
+        remaining -= bytes_to_copy;
+        current_dest = unsafe { current_dest.add(bytes_to_copy) };
+        current_src = unsafe { current_src.add(bytes_to_copy) };
+    }
+
+
+
+    Ok(())
 }
