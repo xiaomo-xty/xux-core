@@ -13,7 +13,7 @@ use riscv::register::{scause, stval, stvec};
 use riscv::register::scause::{Exception, Interrupt};
 
 use crate::config::{TRAMPOLINE, TRAP_CONTEXT};
-use crate::syscall::syscall_dispatch;
+use crate::syscall::syscall_handler;
 use crate::task::{current_trap_ctx, current_user_token, exit_current_and_run_next, suspend_current_and_run_next};
 use crate::timer::set_next_trigger;
 use crate::global_asm;
@@ -91,16 +91,11 @@ pub fn trap_handler() -> ! {
             ctx.sepc += 4;
             // Handlding the system call using a0~a5
             // and store the result in `a0`.
-            ctx.x[10] = syscall_dispatch(ctx.x[17], 
-                                [
-                                    ctx.x[10], 
-                                    ctx.x[11], 
-                                    ctx.x[12],
-                                    ctx.x[13],
-                                    ctx.x[14],
-                                    ctx.x[15],
-                                    ]
-                            ) as usize;
+            let args = [
+                ctx.x[10], ctx.x[11], ctx.x[12],
+                ctx.x[13], ctx.x[14], ctx.x[15],
+            ];
+            ctx.x[10] = syscall_handler(ctx.x[17], args) as usize;
         },
 
         // Handle store-related faults.

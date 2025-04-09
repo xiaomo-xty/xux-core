@@ -1,8 +1,11 @@
 use alloc::string::String;
+use os_macros::syscall_register;
 
 use crate::{mm::user_ptr::UserBuffer, println, task::current_user_token};
 
-pub fn sys_test(
+/// a
+#[syscall_register(SYSCALL_TEST)]
+pub fn sys_test (
     great_cross_page_ptr: usize,
     great_len: usize, 
     arg2: usize, 

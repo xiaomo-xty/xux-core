@@ -33,6 +33,12 @@ SECTIONS
     etext = .;
     srodata = .;
     .rodata : {
+
+        /* 系统调用注册表（只读） */
+        __syscall_registry_start = .;
+        KEEP(*(.syscall_registry))
+        __syscall_registry_end = .;
+
         *(.rodata .rodata.*)
         *(.srodata .srodata.*)
     }
@@ -43,6 +49,13 @@ SECTIONS
     sdata = .;
     .data : {
         *(.data .data.*)
+
+         /* 系统调用表（运行时修改） */
+        . = ALIGN(8);
+        __syscall_table_start = .;
+        KEEP(*(.syscall_table))
+        __syscall_table_end = .;
+
         *(sdata .sdata.*)
     }
 

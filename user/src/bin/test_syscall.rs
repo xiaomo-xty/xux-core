@@ -33,5 +33,6 @@ fn main() -> i32{
         }
     }
     test_syscall(&buffer);
+    println!("test syscall OK");
     0
 }

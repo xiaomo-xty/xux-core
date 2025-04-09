@@ -82,11 +82,21 @@ dependencies = [
  "buddy_system_allocator",
  "lazy_static",
  "log",
+ "os_macros",
  "riscv",
  "sbi-rt",
  "strum",
  "strum_macros 0.25.3",
  "xmas-elf",
+]
+
+[[package]]
+name = "os_macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]

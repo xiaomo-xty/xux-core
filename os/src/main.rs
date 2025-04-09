@@ -1,5 +1,36 @@
-//! main mod
-
+//! XUX-OS Kernel Main Module
+//!
+//! A teaching-oriented operating system kernel for RISC-V architecture, implementing core OS functionality including:
+//! - Multitasking scheduling
+//! - Virtual memory management
+//! - System call interface
+//! - Hardware timer drivers
+//! - Logging subsystem
+//!
+//! # Architectural Overview
+//! ```text
+//! +-------------------+
+//! |    User Space     |
+//! +-------------------+
+//! |  System Call API  |
+//! +-------------------+
+//! |  Task Management  |
+//! +-------------------+
+//! | Memory Management |
+//! +-------------------+
+//! | Hardware Abstraction
+//! +-------------------+
+//! ```
+//!
+//! # Safety Guarantees
+//! - All unsafe blocks are properly documented with invariants
+//! - Memory management maintains isolation between processes
+//! - Interrupt handlers preserve register state
+//!
+//! # Testing Strategy
+//! - Unit tests for core algorithms
+//! - Integration tests for subsystem interactions
+//! - QEMU-based hardware tests
 #![deny(missing_docs)]
 #![deny(warnings)]
 #![no_main]
@@ -66,6 +97,8 @@ pub fn rust_main() -> ! {
 
     timer::set_next_trigger();
     log::info!("Set timer trigger");
+
+    syscall::init();
 
     
     

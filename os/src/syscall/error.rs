@@ -1,6 +1,6 @@
 //! 在Unix-like系统中，系统调用通常返回-1，并将错误码放在errno中
 
-
+#![allow(missing_docs)] 
 
 use strum_macros::{Display, EnumString, FromRepr};
 

@@ -1,5 +1,7 @@
 use core::panic;
 
+use os_macros::syscall_register;
+
 use crate::{mm::user_ptr::UserPtr, print, task::current_user_token};
 
 const FD_STDOUT: usize = 1;
@@ -19,6 +21,7 @@ const FD_STDOUT: usize = 1;
 // }
 
 /// write buf of length `len`  to a file with `fd`
+#[syscall_register(SYSCALL_WRITE)]
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
     match fd {
         FD_STDOUT => {
