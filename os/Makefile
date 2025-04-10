@@ -40,7 +40,7 @@ ifeq ($(MODE), release)
 	MODE_ARG := --release
 endif
 
-LINKER_SCRIPT_TEMPLATE = template.linker.ld
+LINKER_SCRIPT_TEMPLATE = ../scripts/template.linker.ld
 LINKER_SCRIPT = $(subst template.,,$(LINKER_SCRIPT_TEMPLATE))
 
 # KERNEL ENTRY
@@ -75,6 +75,8 @@ build: $(KERNEL_BIN)
 kernel:
 	@cd ../user && make build MODE=$(MODE)
 	@echo Platform: $(BOARD)
+	@echo $(LINKER_SCRIPT_TEMPLATE)
+	@echo $(LINKER_SCRIPT)
 	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/$(LINKER_SCRIPT_TEMPLATE) > src/$(LINKER_SCRIPT)
 	@LOG=$(LOG) cargo build $(MODE_ARG)
 	@rm src/$(LINKER_SCRIPT)

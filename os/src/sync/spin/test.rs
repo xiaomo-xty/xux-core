@@ -1,9 +1,10 @@
 #![cfg(feature = "test")]
 
 use crate::sync::spin::mutex::SpinMutex;
+use os_macros::kernel_test;
 
 
-#[test_case]
+#[kernel_test]
 fn basic_lock_unlock() {
     let mutex = SpinMutex::new(0);
     {
@@ -14,7 +15,7 @@ fn basic_lock_unlock() {
     assert_eq!(*guard, 42);
 }
 
-#[test_case]
+#[kernel_test]
 fn try_lock_fails_when_locked() {
     let mutex = SpinMutex::new(0);
     let guard1 = mutex.lock();

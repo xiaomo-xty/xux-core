@@ -1,0 +1,755 @@
+diff --git a/os/.cargo/config.toml b/os/.cargo/config.toml
+index 319ebc6..d2e2f63 100644
+--- a/os/.cargo/config.toml
++++ b/os/.cargo/config.toml
+@@ -4,6 +4,6 @@ target = "riscv64gc-unknown-none-elf"
+ [target.riscv64gc-unknown-none-elf]
+ rustflags = [
+ 
+-     "-Clink-arg=-Tsrc/linker.ld", "-Cforce-frame-pointers=yes"
++     "-Clink-arg=-Tscripts/linker.ld", "-Cforce-frame-pointers=yes"
+ 
+  ]
+\ No newline at end of file
+diff --git a/os/Cargo.toml b/os/Cargo.toml
+index c8ac6c7..dc291d5 100644
+--- a/os/Cargo.toml
++++ b/os/Cargo.toml
+@@ -5,6 +5,7 @@ edition = "2021"
+ 
+ [dependencies]
+ sbi-rt = {version = "0.0.2", features = ["legacy"]}
++
+ log = "0.4"
+ lazy_static = { version = "1.4.0", features = ["spin_no_std"]}
+ # lazycell = "1.3"
+diff --git a/os/Makefile b/os/Makefile
+index 1158ba1..6c892e0 100644
+--- a/os/Makefile
++++ b/os/Makefile
+@@ -40,7 +40,7 @@ ifeq ($(MODE), release)
+ 	MODE_ARG := --release
+ endif
+ 
+-LINKER_SCRIPT_TEMPLATE = template.linker.ld
++LINKER_SCRIPT_TEMPLATE = ../scripts/template.linker.ld
+ LINKER_SCRIPT = $(subst template.,,$(LINKER_SCRIPT_TEMPLATE))
+ 
+ # KERNEL ENTRY
+@@ -75,6 +75,8 @@ build: $(KERNEL_BIN)
+ kernel:
+ 	@cd ../user && make build MODE=$(MODE)
+ 	@echo Platform: $(BOARD)
++	@echo $(LINKER_SCRIPT_TEMPLATE)
++	@echo $(LINKER_SCRIPT)
+ 	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/$(LINKER_SCRIPT_TEMPLATE) > src/$(LINKER_SCRIPT)
+ 	@LOG=$(LOG) cargo build $(MODE_ARG)
+ 	@rm src/$(LINKER_SCRIPT)
+diff --git a/os/src/console.rs b/os/src/console.rs
+deleted file mode 100644
+index fbb9bfc..0000000
+--- a/os/src/console.rs
++++ /dev/null
+@@ -1,66 +0,0 @@
+-/// This module provides printing functionality for formatted output,
+-/// using `console_putchar` from the SBI (Supervisor Binary Interface) to
+-/// output individual characters. It includes a custom `print!` and `println!`
+-/// macro for formatting and printing text similarly to Rust’s standard `print!`
+-/// and `println!` macros.
+-
+-use crate::sbi::console_putchar;
+-use core::fmt::{self, Write};
+-
+-/// A struct implementing `Write` to send characters to the console via `console_putchar`.
+-struct Stdout;
+-
+-impl Write for Stdout {
+-    /// Implements `write_str` by iterating over each character in the given
+-    /// string `s` and sending it to `console_putchar`.
+-    fn write_str(&mut self, s: &str) -> fmt::Result {
+-        for c in s.chars() {
+-            console_putchar(c as usize);
+-        }
+-        Ok(())
+-    }
+-}
+-
+-/// Prints formatted output to the console.
+-///
+-/// This function takes formatted arguments and sends them to `Stdout`
+-/// using `write_fmt`, which invokes `console_putchar` for each character.
+-///
+-/// # Parameters
+-/// - `args`: The formatted arguments to print, created using `format_args!`.
+-pub fn print(args: fmt::Arguments) {
+-    Stdout.write_fmt(args).unwrap();
+-}
+-
+-/// Prints formatted text without a newline, similar to `print!` in the standard library.
+-///
+-/// This macro uses `format_args!` to handle the provided arguments and calls
+-/// the `print` function to output them.
+-///
+-/// # Usage
+-/// ```
+-/// print!("Hello, {}!", "world");
+-/// ```
+-#[macro_export]
+-macro_rules! print {
+-    ($fmt: literal $(, $($arg: tt)+)?) => {
+-        $crate::console::print(format_args!($fmt $(, $($arg)+)?));
+-    };
+-}
+-
+-
+-/// Prints formatted text followed by a newline, similar to `println!` in the standard library.
+-///
+-/// This macro behaves like `print!` but appends a newline character to the output.
+-///
+-/// # Usage
+-/// ```
+-/// println!("Hello, {}!", "world");
+-/// ```
+-#[macro_export]
+-macro_rules! println {
+-    ($fmt: literal $(, $($arg: tt)+)?) => {
+-        $crate::console::print(format_args!(concat!($fmt, "\n") $(, $($arg)+)?))
+-    };
+-}
+-
+diff --git a/os/src/logging.rs b/os/src/logging.rs
+deleted file mode 100644
+index dc7148f..0000000
+--- a/os/src/logging.rs
++++ /dev/null
+@@ -1,127 +0,0 @@
+-//! A logging module that configures and outputs log messages with color coding.
+-//!
+-//! This module provides a custom logger `OSLogger` that prints log messages in different colors
+-//! based on their severity level (error, warn, info, debug, trace). It relies on the `log` crate
+-//! to capture log messages and format them using ANSI escape codes for color output in the Linux console.
+-//!
+-//! 
+-
+-use core::fmt;
+-
+-// use lazy_static::lazy_static;
+-use log::{self, Level, LevelFilter, Log, Metadata, Record};
+-use crate::console::print;
+-
+-/// # Initialization
+-/// The logger is initialized using the `init` function, which sets up the logging system based on the
+-/// `LOG` environment variable. The available log levels are:
+-/// - "error" -> `LevelFilter::Error`
+-/// - "warn" -> `LevelFilter::Warn`
+-/// - "info" -> `LevelFilter::Info`
+-/// - "debug" -> `LevelFilter::Trace`
+-/// - Any other value -> `LevelFilter::Off`
+-///
+-/// This function **should only be called in the `rust_main` function**, as it sets up the logger
+-/// for the entire application and configures the log level based on the environment variable.
+-///
+-/// # Example
+-/// To use this module, simply call `init()` from `rust_main` and use the `log!` macros
+-/// (like `error!`, `warn!`, `info!`, etc.) for logging.
+-pub fn init() {
+-    static LOGGER: OSLogger = OSLogger;
+-    log::set_logger(&LOGGER).unwrap();
+-    log::set_max_level(
+-        match option_env!("LOG") {
+-            Some("ERROR") => LevelFilter::Error,
+-            Some("WARN") => LevelFilter::Warn,
+-            Some("INFO") => LevelFilter::Info,
+-            Some("DEBUG") => LevelFilter::Trace,
+-            _ => LevelFilter::Off,
+-        }
+-    );
+-}
+-
+-/// A custom logger that prints log messages to the console with color coding.
+-///
+-/// This logger formats the log message based on its severity level, using ANSI escape sequences
+-/// for color output. It supports all log levels provided by the `log` crate.
+-struct OSLogger;
+-
+-impl Log for OSLogger {
+-    /// Determines whether the log message should be processed, based on the log level.
+-    #[warn(unused_variables)]
+-    fn enabled(&self, _metadata: &Metadata) -> bool {
+-        true
+-    }
+-
+-    /// Processes the log message and prints it to the console with color formatting.
+-    fn log(&self, record: &Record) {
+-        if !self.enabled(record.metadata()) {
+-            return;
+-        }
+-
+-        print_in_color(
+-            format_args!("[KERNEL][{:>5}][0,-] {}\n", record.level(), record.args()),
+-            level_to_color_code(record.level())
+-        );
+-    }
+-
+-    /// Flushes the log output (no-op in this case).
+-    fn flush(&self) {}
+-}
+-
+-/// Adds escape sequences to the formatted string to print with a specific color.
+-macro_rules! with_color {
+-    ($args: ident, $color_code: ident) => {{
+-        format_args!("\u{1B}[{}m{}\u{1B}[0m", $color_code as u8, $args)
+-    }};
+-}
+-
+-/// Prints the formatted output in the specified color.
+-///
+-/// This function takes the formatted string provided by `args` and prints it to
+-/// the output, but with the specified color applied. The color is determined
+-/// by the `color_code` parameter, which should be an ANSI color code (e.g.,
+-/// 31 for red, 32 for green, etc.). The function utilizes the `with_color!` macro
+-/// to format the string with the appropriate color escape sequences before printing.
+-///
+-/// # Parameters:
+-/// - `args`: The formatted arguments to be printed, typically in the form of `fmt::Arguments`.
+-/// - `color_code`: The ANSI color code to apply to the text (e.g., 31 for red).
+-///
+-/// # Example:
+-/// ```
+-/// print_in_color(format_args!("Hello, World!"), 31); // Prints "Hello, World!" in red.
+-/// ```
+-///
+-/// # Note:
+-/// This function relies on the `print` function to perform the actual output after
+-/// applying the color formatting.
+-fn print_in_color(args: fmt::Arguments, color_code: u8) {
+-    print(with_color!(args, color_code));
+-}
+-
+-/// Converts a log level to the corresponding ANSI color code.
+-///
+-/// This function maps the log levels (error, warn, info, debug, trace) to the respective
+-/// color codes to be used in the console output:
+-/// - `Level::Error` -> Red (31)
+-/// - `Level::Warn` -> Bright Yellow (93)
+-/// - `Level::Info` -> Blue (34)
+-/// - `Level::Debug` -> Green (32)
+-/// - `Level::Trace` -> Bright Black (90)
+-fn level_to_color_code(level: Level) -> u8 {
+-    match level {
+-        Level::Error => 31, // Red
+-        Level::Warn => 93,  // BrightYellow
+-        Level::Info => 34,  // Blue
+-        Level::Debug => 32, // Green
+-        Level::Trace => 90, // BrightBlack
+-    }
+-}
+-
+-
+-
+-
+-
+-
+diff --git a/os/src/main.rs b/os/src/main.rs
+index 9257fc2..f554109 100644
+--- a/os/src/main.rs
++++ b/os/src/main.rs
+@@ -41,15 +41,14 @@
+ // Custom test frameworks in bare metal
+ #![feature(custom_test_frameworks)]
+ // collect all test_case to the function `test_runner`
+-#![test_runner(test_framwork::test_runner)]
++#![test_runner(test_framework::test_runner)]
+ #![reexport_test_harness_main = "test_main"]
+ 
+ 
+ // #![feature(panic_info_message)]
+-mod console;
++mod io;
+ mod lang_iterms;
+ mod sbi;
+-mod logging;
+ // mod batch;
+ mod task;
+ mod sync;
+@@ -58,7 +57,7 @@ mod syscall;
+ mod config;
+ mod loader;
+ mod timer;
+-mod test_framwork;
++mod test_framework;
+ 
+ extern crate alloc;
+ mod mm;
+@@ -78,7 +77,7 @@ global_asm!(include_str!("link_app.S"));
+ #[no_mangle]
+ pub fn rust_main() -> ! {
+     clear_bss();
+-    logging::init();
++    io::init();
+     log::info!("Logger turn on");
+     log::debug!("Debug Logger turn on");
+     
+diff --git a/os/src/mm/address.rs b/os/src/mm/address.rs
+index b057e89..a3a5c86 100644
+--- a/os/src/mm/address.rs
++++ b/os/src/mm/address.rs
+@@ -1,5 +1,7 @@
+ use core::{fmt::{self, Debug}, ops::Add};
+ 
++use os_macros::kernel_test;
++
+ use crate::config::*;
+ 
+ use super::page_table::{PageTableEntry, PageTableLevel, PageTableLevelIterator};
+@@ -457,7 +459,7 @@ pub type VPNRange = SimpleRange<VirtPageNum>;
+ 
+ 
+ 
+-#[test_case]
++#[kernel_test]
+ fn test_virt_addr() {
+     #[cfg(feature = "sv39")]
+     {
+diff --git a/os/src/mm/page_table.rs b/os/src/mm/page_table.rs
+index c9a084d..228af5b 100644
+--- a/os/src/mm/page_table.rs
++++ b/os/src/mm/page_table.rs
+@@ -11,9 +11,10 @@ use alloc::vec;
+ use alloc::vec::Vec;
+ 
+ use bitflags::*;
++use os_macros::kernel_test;
+ 
+ // Constants related to SATP (used to mask the PPN in the SATP register)
+-use crate::config::{PAGE_SIZE, PPN_MASK, SATP_PPN_MASK};
++use crate::{config::{PAGE_SIZE, PPN_MASK, SATP_PPN_MASK}, println};
+ 
+ // Related modules for address and frame allocation
+ use super::{
+@@ -163,9 +164,8 @@ impl PageTableEntry {
+ 
+ // Test function to print the flags of a PTE
+ #[allow(non_snake_case)]
+-#[test_case]
++#[kernel_test]
+ pub fn test_PTEFlags() {
+-    use crate::println;
+     let empty_flag = PTEFlags::empty();
+     println!("{}", empty_flag.bits());
+ }
+diff --git a/os/src/sync/spin/test.rs b/os/src/sync/spin/test.rs
+index e139906..942409e 100644
+--- a/os/src/sync/spin/test.rs
++++ b/os/src/sync/spin/test.rs
+@@ -1,9 +1,10 @@
+ #![cfg(feature = "test")]
+ 
+ use crate::sync::spin::mutex::SpinMutex;
++use os_macros::kernel_test;
+ 
+ 
+-#[test_case]
++#[kernel_test]
+ fn basic_lock_unlock() {
+     let mutex = SpinMutex::new(0);
+     {
+@@ -14,7 +15,7 @@ fn basic_lock_unlock() {
+     assert_eq!(*guard, 42);
+ }
+ 
+-#[test_case]
++#[kernel_test]
+ fn try_lock_fails_when_locked() {
+     let mutex = SpinMutex::new(0);
+     let guard1 = mutex.lock();
+diff --git a/os/src/template.linker.ld b/os/src/template.linker.ld
+deleted file mode 100644
+index be82961..0000000
+--- a/os/src/template.linker.ld
++++ /dev/null
+@@ -1,88 +0,0 @@
+-
+-/* config in .cargo/config.toml */
+-
+-/* taget arch: riscv  */
+-OUTPUT_ARCH(riscv)
+-ENTRY(_start)
+-
+-/* BASE_ADDRESS Setting */
+-BASE_ADDRESS = #BASE_ADDRESS;
+-
+-SECTIONS
+-{
+-    . = BASE_ADDRESS;
+-    /* kernel starting from here */
+-    skernel = .;
+-
+-    stext = .;
+-    .text : {
+-        *(.text.entry)
+-
+-        /*定义一个strampoline符号
+-        将其对齐到4K边界，
+-        预计存放 .text.trampoline 所标识的跳板代码*/
+-        . = ALIGN(4K);
+-        strampoline = .;
+-        *(.text.trampoline);
+-        . = ALIGN(4K);
+-        *(.text .text.*)
+-    }
+-
+-    /* End of text, begin of rodata */
+-    . = ALIGN(4K);
+-    etext = .;
+-    srodata = .;
+-    .rodata : {
+-
+-        /* 系统调用注册表（只读） */
+-        __syscall_registry_start = .;
+-        KEEP(*(.syscall_registry))
+-        __syscall_registry_end = .;
+-
+-        *(.rodata .rodata.*)
+-        *(.srodata .srodata.*)
+-    }
+-
+-    /* End of rodata, start of data */
+-    . = ALIGN(4K);
+-    erodata = .;
+-    sdata = .;
+-    .data : {
+-        *(.data .data.*)
+-
+-         /* 系统调用表（运行时修改） */
+-        . = ALIGN(8);
+-        __syscall_table_start = .;
+-        KEEP(*(.syscall_table))
+-        __syscall_table_end = .;
+-
+-        *(sdata .sdata.*)
+-    }
+-
+-    /* End of data*/
+-    . = ALIGN(4K);
+-    edata = .;
+-    sbss_with_stack = .;
+-    .bss : {
+-        /* The .bss.stack section is outside 
+-         * the memory range defined by .sbss and .ebss */
+-        *(.bss.stack)
+-
+-        /*start of bss */
+-        sbss = .;
+-        *(.bss .bss.*)
+-        *(.sbss .sbss.*)
+-    }
+-
+-
+-    /* End of ebss, is also end of kernel*/
+-    . = ALIGN(4K);
+-    ebss = .;
+-    ekernel = .;
+-
+-    /* This section is used to discard 
+-    specific data during the linking process. */
+-    /DISCARD/ : {
+-        *(.eh_frame)
+-    }
+-}
+\ No newline at end of file
+diff --git a/os/src/test_framwork/mod.rs b/os/src/test_framwork/mod.rs
+deleted file mode 100644
+index 2374573..0000000
+--- a/os/src/test_framwork/mod.rs
++++ /dev/null
+@@ -1,38 +0,0 @@
+-use crate::{println, sbi::shutdown};
+-
+-/// test_runner
+-#[allow(unused)]
+-pub fn test_runner(tests: &[&dyn Fn()]) {
+-    println!("Running {} tests", tests.len());
+-    for test in tests {
+-        // 模拟捕获 panic
+-        let result = run_test(test);
+-        
+-
+-        // 检查测试是否 panic
+-        if result.is_err() {
+-            println!("Test failed!");
+-        } else {
+-            println!("Test passed!");
+-        }
+-    }
+-    println!("All tests completed!");
+-
+-    shutdown(true)
+-}
+-
+-// capture panic
+-fn run_test(test: &dyn Fn()) -> Result<(), ()> {
+-    struct Guard;
+-
+-    impl Drop for Guard {
+-        fn drop(&mut self) {
+-            println!("Test completed!");
+-        }
+-    }
+-
+-    let _guard = Guard;
+-
+-    test();
+-    Ok(())
+-}
+\ No newline at end of file
+diff --git a/os/src/timer/mod.rs b/os/src/timer/mod.rs
+index 517c4c8..fc94c9e 100644
+--- a/os/src/timer/mod.rs
++++ b/os/src/timer/mod.rs
+@@ -65,8 +65,3 @@ pub fn get_time_us() -> usize {
+     time::read() / (CLOCK_FREQ / MICRO_PER_SEC)
+ }
+ 
+-
+-#[test_case]
+-fn test_get_time() {
+-    assert_eq!(1+1, 2);
+-}
+\ No newline at end of file
+diff --git a/os_macros/src/lib.rs b/os_macros/src/lib.rs
+index e636c68..efe0d22 100644
+--- a/os_macros/src/lib.rs
++++ b/os_macros/src/lib.rs
+@@ -1,75 +1,65 @@
+ // #![no_std]
+ use proc_macro::TokenStream;
+ use quote::{format_ident, quote};
+-use syn::{parse_macro_input, Expr, ItemFn, FnArg, ReturnType};
+ use syn::spanned::Spanned;
++use syn::{parse_macro_input, Expr, FnArg, ItemFn, ReturnType};
+ 
+-
+-
+-/// A procedural macro attribute for registering system call handlers.
++/// System call registration procedural macro
+ ///
+-/// This attribute transforms a function into a system call handler by:
+-/// 1. Preserving the original function
+-/// 2. Generating a wrapper function that handles argument conversion
+-/// 3. Automatically registering the handler in the system call table
++/// Transforms a function into a system call handler with:
++/// 1. Original function preservation
++/// 2. Wrapper generation for ABI compatibility
++/// 3. Automatic registration in system call table
+ ///
+-/// # Usage
+-/// ```rust,ignore
+-/// #[syscall_register(42)] // 42 is the system call number
+-/// fn my_syscall(arg1: usize, arg2: usize) -> isize {
+-///     // Implementation
+-/// }
+-/// ```
++/// Usage: #[syscall_register(N)] where N is the syscall number
+ ///
+-/// # Safety
+-/// - The macro generates unsafe code for system call argument conversion
+-/// - The target function must only take types that implement `From<usize>`
+-/// - The system call table (`SYSCALL_TABLE`) must be declared elsewhere
+-///
+-/// # Generated Code
+-/// For each annotated function, the macro generates:
+-/// 1. The original function
+-/// 2. A wrapper function with ABI-compatible signature
+-/// 3. Automatic registration in the system call table
+-
+-
++/// Safety requirements:
++/// - Only accepts types implementing From<usize>
++/// - Requires SYSCALL_TABLE to be defined externally
++/// - Generates unsafe argument conversion code
+ #[proc_macro_attribute]
+ pub fn syscall_register(attr: TokenStream, item: TokenStream) -> TokenStream {
+-    // 解析属性参数和函数定义
++    // Parse attribute as expression and input function
+     let expr = parse_macro_input!(attr as Expr);
+     let input_fn = parse_macro_input!(item as ItemFn);
+     let fn_name = &input_fn.sig.ident;
+ 
+-    // 处理系统调用号表达式
++    // Handle syscall number parsing (supports literals, paths, and expressions)
+     let syscall_num = match parse_syscall_num(&expr) {
+         Ok(num) => num,
+         Err(err) => return err.to_compile_error().into(),
+     };
+ 
+-    // 提取参数信息
+-    let params = input_fn.sig.inputs.iter().enumerate().map(|(i, arg)| {
+-        match arg {
++    // Extract parameter information (index, name, type)
++    let params = input_fn
++        .sig
++        .inputs
++        .iter()
++        .enumerate()
++        .map(|(i, arg)| match arg {
+             FnArg::Typed(pat) => (i, &pat.pat, &pat.ty),
+             _ => panic!("Receiver arguments not supported in syscall handlers"),
+-        }
+-    });
++        });
+ 
+-    // 生成参数转换代码
++    // Generate argument conversion code for wrapper
+     let arg_conversions = params.clone().map(|(i, arg_name, arg_type)| {
+         quote! {
+-            let #arg_name = unsafe { 
++            let #arg_name = unsafe {
+                  args[#i] as #arg_type
+             };
+         }
+     });
+ 
+-    // 生成参数名列表用于调用原函数
++    // Collect argument names for function call
+     let arg_names = params.map(|(_, arg_name, _)| arg_name);
+ 
+     let wrapper_name = format_ident!("{}_wrapper", fn_name);
+     let register_name = format_ident!("REGISTER_{}", fn_name.to_string().to_uppercase());
+ 
+-
++    // Handle different return type cases:
++    // - Default (no return) -> returns 0
++    // - Never type (!) -> unreachable
++    // - Normal return -> converted to isize
+     let wrapper_return = match &input_fn.sig.output {
+         ReturnType::Default => quote! {#fn_name(#(#arg_names),*); 0 },
+         ReturnType::Type(_, ty) => {
+@@ -86,7 +76,10 @@ pub fn syscall_register(attr: TokenStream, item: TokenStream) -> TokenStream {
+         }
+     };
+ 
+-    // 生成最终代码
++    // Generate final output containing:
++    // 1. Original function
++    // 2. Wrapper function
++    // 3. Registration static
+     let expanded = quote! {
+         // reserve original function
+         #input_fn
+@@ -94,14 +87,11 @@ pub fn syscall_register(attr: TokenStream, item: TokenStream) -> TokenStream {
+         #[allow(unreachable_code)]
+         #[doc(hidden)]
+         #[inline(never)]
+-
+-        // pub fn #wrapper_name (args: [usize; 6]) -> isize {
+         pub unsafe extern "C" fn #wrapper_name (args: [usize; 6]) -> isize {
+             #(#arg_conversions)*
+             #wrapper_return
+         }
+ 
+-
+         #[used]
+         #[link_section = ".syscall_registry"]
+         static #register_name: crate::syscall::SyscallRegistry = crate::syscall::SyscallRegistry {
+@@ -110,40 +100,83 @@ pub fn syscall_register(attr: TokenStream, item: TokenStream) -> TokenStream {
+         };
+     };
+ 
+-    
+-
+     let token_stream = expanded.into();
+-    // eprintln!("{}\n\n\n", token_stream);
+     token_stream
+ }
+ 
+-/// 解析系统调用号表达式，支持常量和字面量
++/// Parses syscall number from attribute expression
++///
++/// Supports:
++/// - Literals (e.g., 42)
++/// - Paths (e.g., SYSCALL_EXIT)
++/// - Complex expressions (e.g., BASE + 1)
+ fn parse_syscall_num(expr: &Expr) -> Result<proc_macro2::TokenStream, syn::Error> {
+     match expr {
+-        // 处理字面量情况 (如 #[syscall_register(1)])
+         Expr::Lit(lit) => Ok(quote! { #lit }),
+-        
+-        // 处理路径表达式 (如 #[syscall_register(SYSCALL_EXIT)])
+         Expr::Path(path) => {
+             let ident = path.path.get_ident().ok_or_else(|| {
+                 syn::Error::new(path.span(), "Expected identifier for syscall number")
+             })?;
+-            
+-            // 这里我们假设调用者已经正确引入了常量
+-            // 实际使用时可能需要更复杂的解析
+             Ok(quote! { crate::syscall::syscall_num:: #ident })
+-        },
+-        
+-        // 处理其他表达式 (如 #[syscall_register(SYSCALL_BASE + 1)])
++        }
+         _ => Ok(quote! { #expr }),
+     }
+ }
+ 
+-/// 检查是否为发散函数 (! 类型)
++/// Checks if type is the never type (!)
+ fn is_never_type(ty: &syn::Type) -> bool {
+     if let syn::Type::Path(type_path) = ty {
+-        type_path.path.segments.last().map_or(false, |seg| seg.ident == "!")
++        type_path
++            .path
++            .segments
++            .last()
++            .map_or(false, |seg| seg.ident == "!")
+     } else {
+         false
+     }
+-}
+\ No newline at end of file
++}
++
++/// Kernel test case procedural macro
++///
++/// Enhances test cases with:
++/// - Automatic test identification
++/// - Colored output formatting
++/// - Source location reporting
++///
++/// Generates both original function and test wrapper
++#[proc_macro_attribute]
++pub fn kernel_test(_attr: TokenStream, input: TokenStream) -> TokenStream {
++    let input_fn = parse_macro_input!(input as ItemFn);
++    let fn_name = &input_fn.sig.ident;
++
++    let wrapper_name = format_ident!("__{}_test_wrapper", fn_name);
++
++    // Generate test wrapper with:
++    // 1. Test identification header
++    // 2. Original function execution
++    // 3. Success/failure reporting
++    let output = quote! {
++        // Original function (unchanged)
++        #[allow(unused)]
++        #input_fn
++
++        // Generated test wrapper
++        #[doc(hidden)]
++        #[test_case]
++        fn #wrapper_name () {
++            crate::color_println!(crate::io::console::Color::Blue,
++                "\nTesting > {} ({}::{}) ...",
++                stringify!(#fn_name),
++                file!(),
++                stringify!(#fn_name)
++            );
++
++            #fn_name ();
++            crate::color_println!(crate::io::console::Color::Green, 
++                "========[Test passed!]========"
++            );
++        }
++    };
++
++    output.into()
++}

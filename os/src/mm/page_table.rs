@@ -11,9 +11,10 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use bitflags::*;
+use os_macros::kernel_test;
 
 // Constants related to SATP (used to mask the PPN in the SATP register)
-use crate::config::{PAGE_SIZE, PPN_MASK, SATP_PPN_MASK};
+use crate::{config::{PAGE_SIZE, PPN_MASK, SATP_PPN_MASK}, println};
 
 // Related modules for address and frame allocation
 use super::{
@@ -163,9 +164,8 @@ impl PageTableEntry {
 
 // Test function to print the flags of a PTE
 #[allow(non_snake_case)]
-#[test_case]
+#[kernel_test]
 pub fn test_PTEFlags() {
-    use crate::println;
     let empty_flag = PTEFlags::empty();
     println!("{}", empty_flag.bits());
 }

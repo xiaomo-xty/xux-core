@@ -1,5 +1,7 @@
 use core::{fmt::{self, Debug}, ops::Add};
 
+use os_macros::kernel_test;
+
 use crate::config::*;
 
 use super::page_table::{PageTableEntry, PageTableLevel, PageTableLevelIterator};
@@ -457,7 +459,7 @@ pub type VPNRange = SimpleRange<VirtPageNum>;
 
 
 
-#[test_case]
+#[kernel_test]
 fn test_virt_addr() {
     #[cfg(feature = "sv39")]
     {

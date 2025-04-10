@@ -41,15 +41,14 @@
 // Custom test frameworks in bare metal
 #![feature(custom_test_frameworks)]
 // collect all test_case to the function `test_runner`
-#![test_runner(test_framwork::test_runner)]
+#![test_runner(test_framework::test_runner)]
 #![reexport_test_harness_main = "test_main"]
 
 
 // #![feature(panic_info_message)]
-mod console;
+mod io;
 mod lang_iterms;
 mod sbi;
-mod logging;
 // mod batch;
 mod task;
 mod sync;
@@ -58,7 +57,7 @@ mod syscall;
 mod config;
 mod loader;
 mod timer;
-mod test_framwork;
+mod test_framework;
 
 extern crate alloc;
 mod mm;
@@ -78,7 +77,7 @@ global_asm!(include_str!("link_app.S"));
 #[no_mangle]
 pub fn rust_main() -> ! {
     clear_bss();
-    logging::init();
+    io::init();
     log::info!("Logger turn on");
     log::debug!("Debug Logger turn on");
     

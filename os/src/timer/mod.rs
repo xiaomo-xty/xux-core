@@ -65,8 +65,3 @@ pub fn get_time_us() -> usize {
     time::read() / (CLOCK_FREQ / MICRO_PER_SEC)
 }
 
-
-#[test_case]
-fn test_get_time() {
-    assert_eq!(1+1, 2);
-}
