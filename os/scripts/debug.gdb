@@ -1,6 +1,5 @@
-break trap_return
-break sys_exit
-break run_next_task
+break switch
+break schedule_loop
 
 echo "starting debug!"
 

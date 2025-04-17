@@ -19,10 +19,11 @@ impl<T> Mutex<T> {
     }
 
     pub fn lock(&self) -> MutexGuard<'_, T> {
-        while 1 == self.state.swap(1, Ordering::Acquire) {
-            wait(&self.state, 1);
-        }
+        unimplemented!()
+        // while 1 == self.state.swap(1, Ordering::Acquire) {
+        //     wait(&self.state, 1);
+        // }
 
-        MutexGuard { mutex: self }
+        // MutexGuard { mutex: self }
     }
 }

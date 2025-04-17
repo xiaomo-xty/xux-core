@@ -56,10 +56,10 @@ impl TaskContext {
     ///     s: s_0..12
     /// }
     /// ```
-    pub fn goto_trap_return(kstack_ptr: usize)  -> Self {
+    pub fn goto_trap_return(kernel_stack_top: usize)  -> Self {
         Self {
             ra: trap_return as usize,
-            sp: kstack_ptr,
+            sp: kernel_stack_top,
             s: [0; 12],
         }
     }

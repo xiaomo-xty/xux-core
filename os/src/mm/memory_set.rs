@@ -6,15 +6,14 @@ use lazy_static::lazy_static;
 use riscv::register::satp;
 
 use crate::{
-    board::MMIO,
-    config::{MEMORY_END, PAGE_SIZE, TRAMPOLINE, TRAP_CONTEXT, USER_STACK_SIZE},
-    mm::map_area::{MapArea, MapPermission, MapType},
-    sync::UPSafeCell,
+    board::MMIO, 
+    config::{PAGE_SIZE, PHYSTOP, TRAMPOLINE}, 
+    mm::map_area::{MapArea, MapPermission, MapType}, 
+    sync::spin::mutex::SpinMutex, 
 };
 
 use super::{
-    address::{PhysAddr, VirtAddr, VirtPageNum},
-    page_table::{PTEFlags, PageTable, PageTableEntry},
+    address::{PhysAddr, VPNRange, VirtAddr, VirtPageNum}, page_table::{PTEFlags, PageTable, PageTableEntry}
 };
 
 extern "C" {
@@ -31,21 +30,45 @@ extern "C" {
 }
 
 lazy_static! {
-    pub static ref KERNEL_SPACE: Arc<UPSafeCell<MemorySet>> =
-        Arc::new(unsafe { UPSafeCell::new(MemorySet::new_kernel()) });
+    pub static ref KERNEL_SPACE: Arc< SpinMutex<MemorySet> > =
+        Arc::new(
+            SpinMutex::new(
+                MemorySet::new_kernel()
+            )
+        );
 }
+
+struct UserMemorySetInfo {
+    stack_range: VPNRange,
+    // stack: Arc<MapArea>,
+    // heap: VPNRange,
+    // task_size: usize,
+    // total_virtual_memory: usize,
+    // data_virtual_memory: usize,
+    // exec_virtual_memory: usize,
+
+    // pub mapped_files: Vec<Arc<dyn File>>,   // 已映射的文件（类比 exe_file）
+    // exec_file: Arc<dyn File>,
+    // binfmt: BinaryFmt,
+}
+
 
 pub struct MemorySet {
     page_table: PageTable,
     areas: Vec<MapArea>,
+    user_info: Option<UserMemorySetInfo>,
 }
 
 impl MemorySet {
     pub fn new_bare() -> Self {
-        Self {
+        log::debug!("new bare");
+        let a = Self {
             page_table: PageTable::new(),
             areas: Vec::new(),
-        }
+            user_info: None,
+        };
+        log::debug!("new bare end");
+        a
     }
 
     pub fn token(&self) -> usize {
@@ -70,32 +93,44 @@ impl MemorySet {
         end_va: VirtAddr,
         permission: MapPermission,
     ) {
+        log::debug!("insert {:?}~{:?}", start_va, end_va);
         self.push(
             MapArea::new(start_va, end_va, MapType::Framed, permission),
             None,
         );
     }
 
+
+    pub fn remove_area_with_start_vpn(&mut self, start_vpn: VirtPageNum) {
+        if let Some((idx, area)) = self
+            .areas
+            .iter_mut()
+            .enumerate()
+            .find(|(_, area)| area.get_vpn_range().get_start() == start_vpn)
+        {
+            area.unmap(&mut self.page_table);
+            self.areas.remove(idx);
+        }
+    }
+
     pub fn activate(&self) {
-        log::info!("KERNEL SPACE activing.");
         let satp = self.page_table.token();
         unsafe {
             satp::write(satp);
             // sync
             asm!("sfence.vma");
         }
-        log::info!("KERNEL SPACE actived successfully.");
     }
 
     pub fn translate(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
         self.page_table.find_pte_by_vpn(vpn)
     }
-}
 
-impl MemorySet {
     pub fn new_kernel() -> Self {
         log::info!("New kernel starting.");
         let mut memory_set = Self::new_bare();
+
+        log::info!("Map trampoline.");
         memory_set.map_trampoline();
 
         log::info!(".text   [{:#x}, {:#x}]", stext as usize, etext as usize);
@@ -155,7 +190,7 @@ impl MemorySet {
         memory_set.push(
             MapArea::new(
                 (ekernel as usize).into(),
-                MEMORY_END.into(),
+                PHYSTOP.into(),
                 MapType::Identical,
                 MapPermission::R | MapPermission::W,
             ),
@@ -177,6 +212,23 @@ impl MemorySet {
         log::info!("New kernel sucessfully.");
         memory_set
     }
+    
+}
+
+impl MemorySet {
+    
+    pub fn new_user() -> Self {
+        let mut memory_set = Self::new_bare();
+
+        memory_set.map_trampoline();
+
+
+        memory_set
+
+
+    }
+
+    
     /// Maps the user-space trampoline page to the kernel's trampoline code.
     ///
     /// # Design Rationale
@@ -207,13 +259,12 @@ impl MemorySet {
             PTEFlags::R | PTEFlags::X,
         );
     }
+
 }
 
 impl MemorySet {
     pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize) {
-        let mut memory_set = Self::new_bare();
-
-        memory_set.map_trampoline();
+        let mut memory_set = Self::new_user();
 
         let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         let elf_header = elf.header;
@@ -248,40 +299,43 @@ impl MemorySet {
                 );
             }
         }
-        //  Map user stack wityh U flags
         let max_end_va: VirtAddr = max_end_vpn.into();
-        let mut user_stack_bottom: usize = max_end_va.into();
+        // Div by guard page
+        let user_stack_base: usize = usize::from(max_end_va) + PAGE_SIZE;
+        
 
-        // Guard page
-        user_stack_bottom += PAGE_SIZE;
-        let user_stack_top = user_stack_bottom + USER_STACK_SIZE;
-        let guard_page_map = MapArea::new(
-            user_stack_bottom.into(),
-            user_stack_top.into(),
-            MapType::Framed,
-            MapPermission::R | MapPermission::W | MapPermission::U,
-        );
-        memory_set.push(guard_page_map, None);
-
-        let map_trap_ctx = MapArea::new(
-            TRAP_CONTEXT.into(),
-            TRAMPOLINE.into(),
-            MapType::Framed,
-            MapPermission::R | MapPermission::W,
-        );
-
-        memory_set.push(map_trap_ctx, None);
         (
             memory_set,
-            user_stack_top,
+            user_stack_base,
             elf.header.pt2.entry_point() as usize,
         )
+    }
+
+
+    pub fn from_other_user(user_space: &MemorySet) -> MemorySet {
+        let mut memory_set = Self::new_bare();
+        // map trampoline
+        memory_set.map_trampoline();
+        // copy data sections/trap_context/user_stack
+        for area in user_space.areas.iter() {
+            let new_area = MapArea::from_other(area);
+            memory_set.push(new_area, None);
+            // copy data from another space
+            for vpn in area.get_vpn_range() {
+                let src_ppn = user_space.translate(vpn).unwrap().ppn();
+                let dst_ppn = memory_set.translate(vpn).unwrap().ppn();
+                dst_ppn
+                    .get_bytes_array_slice()
+                    .copy_from_slice(src_ppn.get_bytes_array_slice());
+            }
+        }
+        memory_set
     }
 }
 
 pub fn remap_test() {
     log::info!("Remap test starting");
-    let kernel_space = KERNEL_SPACE.exclusive_access();
+    let kernel_space = KERNEL_SPACE.lock();
     let mid_text: VirtAddr = ((stext as usize + etext as usize) / 2).into();
     let mid_rodata: VirtAddr = ((sdata as usize + edata as usize) / 2).into();
     let mid_data: VirtAddr = ((sdata as usize + edata as usize) / 2).into();

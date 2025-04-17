@@ -31,8 +31,11 @@
 //! - Unit tests for core algorithms
 //! - Integration tests for subsystem interactions
 //! - QEMU-based hardware tests
-#![deny(missing_docs)]
-#![deny(warnings)]
+//! 
+
+
+// #![deny(missing_docs)]
+// #![deny(warnings)]
 #![no_main]
 #![no_std]
 #![feature(alloc_error_handler)]
@@ -51,12 +54,15 @@ mod lang_iterms;
 mod sbi;
 // mod batch;
 mod task;
+mod processor;
 mod sync;
 mod trap;
+mod interupt;
 mod syscall;
 mod config;
 mod loader;
 mod timer;
+mod register;
 mod test_framework;
 
 extern crate alloc;
@@ -66,6 +72,8 @@ mod mm;
 mod board;
 
 use core::arch::global_asm;
+
+use processor::get_current_processor;
 
 // os entry
 global_asm!(include_str!("entry.asm"));
@@ -91,26 +99,28 @@ pub fn rust_main() -> ! {
     log::info!("Trap initialize: [success]");
 
     // loader::load_apps();
-    trap::enable_timer_interrupt();
-    log::info!("Enable timer interrupt");
-
-    timer::set_next_trigger();
-    log::info!("Set timer trigger");
 
     syscall::init();
 
-    
-    
     log::info!("XUX-OS initilize successed!");
     print_info();
-    
+    log::debug!("print end");
     
     
     #[cfg(test)]
     test_main();
+
+    task::init_scheduler();
+
+    trap::enable_timer_interrupt();
+    timer::set_next_trigger();
     
     log::info!("test successed!Welcom ot xux-os!");
-    task::run_first_task();
+    {
+        let processor = get_current_processor();
+        let mut scheduler_guard = processor.scheduler.lock();
+        scheduler_guard.run();
+    }
     unreachable!();
     
 }

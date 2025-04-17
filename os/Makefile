@@ -29,6 +29,7 @@ QEMU_DIR := ../tools/qemu-7.0.0/build
 QEMU := $(QEMU_DIR)/qemu-system-riscv64
 # QEMU := qemu-system-riscv64
 GDB := gdb-multiarch
+# GDB := rust-gdb
 
 BOOTLOADER := ../bootloader/$(SBI)-$(BOARD).bin
 BOOTLOADER_SIZE_HEX := 0x20000
@@ -73,7 +74,8 @@ build: $(KERNEL_BIN)
 # 	@rm src/linker.ld
 
 kernel:
-	@cd ../user && make build MODE=$(MODE)
+
+	@cd ../user && make build
 	@echo Platform: $(BOARD)
 	@echo $(LINKER_SCRIPT_TEMPLATE)
 	@echo $(LINKER_SCRIPT)
@@ -131,6 +133,7 @@ clean:
 
 
 build-tests:
+	@echo "build tests"
 	@cd ../user && make build
 	@echo Platform: $(BOARD)
 	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/$(LINKER_SCRIPT_TEMPLATE) > src/$(LINKER_SCRIPT)

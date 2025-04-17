@@ -15,9 +15,15 @@ pub struct VirtAddr(pub usize);
 #[derive(Copy, Clone, Ord, PartialEq, PartialOrd, Eq)]
 pub struct PhysPageNum(pub usize);
 
-#[derive(Copy, Clone, Ord, PartialEq, PartialOrd, Eq, Debug)]
+#[derive(Copy, Clone, Ord, PartialEq, PartialOrd, Eq)]
 pub struct VirtPageNum(pub usize);
 
+
+impl fmt::Debug for VirtPageNum {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "VirtPageNum({:#x})", self.0)
+    }
+}
 
 impl fmt::Debug for VirtAddr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -52,7 +58,7 @@ impl From<usize> for VirtAddr {
 
 impl From<usize> for VirtPageNum {
     fn from(value: usize) -> Self {
-        Self (value & VPN_MASK)
+        VirtAddr::from(value).into()
     }
 }
 

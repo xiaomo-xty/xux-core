@@ -20,6 +20,7 @@ use super::{
     }
 };
 
+// unit is page
 pub struct MapArea {
     vpn_range: VPNRange,
     data_frames: BTreeMap<VirtPageNum, FrameTracker>,
@@ -49,14 +50,21 @@ impl MapArea {
         map_type: MapType,
         map_perm: MapPermission,
     ) -> Self {
+        log::debug!("New MapArea: start-{:?}~end-{:?}", start_va, end_va);
         let start_vpn: VirtPageNum = start_va.down_to_vpn();
         let end_vpn: VirtPageNum = end_va.up_to_vpn();
+        log::debug!("New MapArea: start-{:?}~end-{:?}", start_vpn, end_vpn);
         Self {
             vpn_range: VPNRange::new(start_vpn, end_vpn),
             data_frames: BTreeMap::new(),
             map_type,
             map_perm,
         }
+    }
+
+    #[inline(always)]
+    pub fn get_vpn_range(&self) -> VPNRange {
+        self.vpn_range
     }
 
     pub fn map(&mut self, page_table: &mut PageTable) {
@@ -97,6 +105,7 @@ impl MapArea {
     }
 
     pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
+        log::debug!("map one: {:?}", vpn);
         let ppn: PhysPageNum;
         match self.map_type {
             MapType::Identical => {
@@ -125,6 +134,15 @@ impl MapArea {
 
     pub fn get_vpn_end(&self) -> VirtPageNum {
         self.vpn_range.get_end()
+    }
+
+    pub fn from_other(other: &Self) -> Self{
+        Self {
+            vpn_range: VPNRange::new(other.vpn_range.get_start(), other.vpn_range.get_end()),
+            data_frames: BTreeMap::new(),
+            map_type : other.map_type,
+            map_perm: other.map_perm
+        }
     }
 
     // pub fn get_vpn_start(&self) -> VirtPageNum {

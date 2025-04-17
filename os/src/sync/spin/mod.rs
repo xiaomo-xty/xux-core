@@ -10,6 +10,7 @@
 //!     - [x] Core locking functionality (`lock()`, `try_lock()`)
 //!     - [ ] Backoff strategy optimization  
 //!       ▶ Exponential backoff for high-contention scenarios
+//! - [x] CpuSpinLock
 //!
 //! ### Blocking Locks
 //! - [ ] `Mutex` - Thread-blocking mutex with scheduler integration  

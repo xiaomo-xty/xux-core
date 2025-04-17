@@ -1,7 +1,7 @@
 mod uniprocessor;
 mod atomic;
 mod blocking;
-mod spin;
+pub mod spin;
 
 
-pub use uniprocessor::UPSafeCell;
+// pub use uniprocessor::UPSafeCell;

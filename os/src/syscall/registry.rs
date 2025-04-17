@@ -4,11 +4,15 @@
 
 use lazy_static::lazy_static;
 
-use crate::sync::UPSafeCell;
+use crate::sync::spin::mutex::SpinMutex;
+
+// use crate::sync::UPSafeCell;
 
 /// Type alias for system call handler functions.
 /// These are unsafe C-ABI functions that take 6 arguments and return an isize.
 type SyscallHandler = unsafe extern "C" fn(args: [usize; 6]) -> isize;
+
+type RWLock<T> = SpinMutex<T>;
 
 lazy_static! {
 
@@ -19,10 +23,8 @@ lazy_static! {
     /// - Must be properly initialized before use
     /// - Contains 512 entries (0-511) matching standard system call numbers
     #[link_section = ".syscall_table"]
-    pub static ref SYSCALL_TABLE: UPSafeCell<[Option<SyscallHandler>; 512]> = 
-        unsafe {
-            UPSafeCell::new([None; 512])
-        };
+    pub static ref SYSCALL_TABLE: SpinMutex<[Option<SyscallHandler>; 512]> = 
+            RWLock::new([None; 512]);
 }
 
 /// Structure representing a registered system call entry.
@@ -60,7 +62,7 @@ pub unsafe fn init() {
     let end = &__syscall_registry_end as *const SyscallRegistry;
     let count = (end as usize - start as usize) / core::mem::size_of::<SyscallRegistry>();
 
-    let mut syscall_table = SYSCALL_TABLE.exclusive_access();
+    let mut syscall_table = SYSCALL_TABLE.lock();
     
     // Populate system call table
     for i in 0..count {
@@ -73,5 +75,5 @@ pub unsafe fn init() {
 /// unuseful
 #[allow(unused)]
 pub unsafe fn hotpatch(num: usize, new_handler: SyscallHandler) {
-    SYSCALL_TABLE.exclusive_access()[num] = Some(new_handler)
+    SYSCALL_TABLE.lock()[num] = Some(new_handler)
 }

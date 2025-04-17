@@ -1,40 +1,45 @@
 use alloc::{fmt, format, vec::Vec};
 use lazy_static::lazy_static;
-use crate::{config::MEMORY_END, mm::address::PhysAddr, println, sync::UPSafeCell};
+use crate::{config::PHYSTOP, mm::address::PhysAddr, println, sync::spin::mutex::SpinMutex};
 
 use super::address::PhysPageNum;
 
 type FrameAllocatorImpl = StackFrameAllocator;
 
+
 lazy_static! {
-    pub static ref FRAME_ALLOCATOR: UPSafeCell<FrameAllocatorImpl> = unsafe {
-        UPSafeCell::new(FrameAllocatorImpl::new())
-    };
+    pub static ref FRAME_ALLOCATOR: SpinMutex<FrameAllocatorImpl> =
+        { 
+            log::info!("Initialize FRAME_ALLOCATOR");
+            SpinMutex::new(FrameAllocatorImpl::new())
+        };
 }
 
 pub fn init_frame_allocator() {
+
     log::info!("Frame allocator initializing.");
     extern "C" {
         fn ekernel();
     }
 
+    log::debug!("cao");
     FRAME_ALLOCATOR
-        .exclusive_access()
-        .init(PhysAddr::from(ekernel as usize).up_to_ppn(), PhysAddr::from(MEMORY_END).down_to_ppn());
+        .lock()
+        .init(PhysAddr::from(ekernel as usize).up_to_ppn(), PhysAddr::from(PHYSTOP).down_to_ppn());
 
-        log::info!("Frame allocator initialized successfully.");
+    log::info!("Frame allocator initialized successfully.");
 }
 
 pub fn frame_alloc() -> Option<FrameTracker> {
     FRAME_ALLOCATOR
-        .exclusive_access()
+        .lock()
         .alloc()
         .map(|ppn| FrameTracker::new(ppn))
 }
 
 fn frame_dealloc(ppn: PhysPageNum) {
     FRAME_ALLOCATOR
-        .exclusive_access()
+        .lock()
         .dealloc(ppn);
 }
 

@@ -252,6 +252,7 @@ impl PageTable {
     /// # Returns:
     /// A new `PageTable` with a valid root PPN and an empty list of frames.
     pub fn new() -> Self {
+        log::debug!("new page table");
         let frame = frame_alloc().unwrap();
         PageTable {
             root_ppn: frame.ppn,
@@ -272,12 +273,9 @@ impl PageTable {
     /// # Panics:
     /// This function will panic if the VPN is already mapped (i.e., the entry is already valid).
     pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
-        #[cfg(debug_assertions)]
-        if vpn.0 == 0x80400 {
-            log::debug!("Maping 0x{:x}000", vpn.0);
-        }
 
-        // log::debug!("Maping 0x{:x}000", vpn.0);
+
+        log::debug!("PageTable Maping {:?}", vpn);
         let pte = self.find_pte_or_create(vpn).unwrap();
         assert!(
             !pte.is_valid(),

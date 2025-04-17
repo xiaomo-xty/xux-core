@@ -39,7 +39,7 @@ pub const KERNEL_HEAP_SIZE: usize = 0x30_0000;
 // pub const KERNEL_HEAP_SIZE: usize = 0x10_00;
 
 // The memory size of K210 is 8MiB
-pub const MEMORY_END: usize = 0x80800000;
+pub const PHYSTOP: usize = 0x80800000;
 
 
 
@@ -62,18 +62,16 @@ pub const SATP_PPN_MASK: usize = (1 << SATP_ROOT_PPN_BITS) - 1;
 
 
 
-pub const TRAMPOLINE: usize = usize::MAX - PAGE_SIZE + 1;
-pub const TRAP_CONTEXT: usize = TRAMPOLINE - PAGE_SIZE;
+// SV39 规范下的安全地址（用户空间最高合法区域）
+pub const USER_HIGH_VA: usize = 0xFFFFFFFFC0000000; // 最高 1GB
+pub const TRAMPOLINE: usize = USER_HIGH_VA - PAGE_SIZE;  // 0xFFFFFFFFBFFFF000
+// pub const TRAP_CONTEXT: usize = TRAMPOLINE - PAGE_SIZE;  // 0xFFFFFFFFBFFFE000
 
+#[allow(unused)]
+pub const USYSCALL: usize = TRAMPOLINE - PAGE_SIZE;     // 0xFFFFFFFFBFFFD000
+pub const KERNEL_STACK_BASE: usize = USYSCALL - PAGE_SIZE;
 
-
-// Return (bootom, top) of a kernel stack in kernel space.
-pub fn kernel_stack_position(app_id: usize) -> (usize, usize) {
-    let top = TRAMPOLINE - app_id * (KERNEL_STACK_SIZE + PAGE_SIZE);
-    let bottom = top - KERNEL_STACK_SIZE;
-    (bottom, top)
-}
-
+pub const TRAP_CONTEXT_START: usize = PHYSTOP;
 
 
 

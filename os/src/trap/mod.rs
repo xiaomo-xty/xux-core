@@ -6,16 +6,18 @@
 
 mod context;
 
+
 use core::arch::asm;
 
 use riscv::register::utvec::TrapMode;
-use riscv::register::{scause, stval, stvec};
-use riscv::register::scause::{Exception, Interrupt};
+use riscv::register::{scause, sscratch, stval, stvec};
+use riscv::register::scause::{Exception, Interrupt, Trap};
 
-use crate::config::{TRAMPOLINE, TRAP_CONTEXT};
+use crate::config::TRAMPOLINE;
+use crate::interupt::InterruptController;
 use crate::syscall::syscall_handler;
-use crate::task::{current_trap_ctx, current_user_token, exit_current_and_run_next, suspend_current_and_run_next};
-use crate::timer::set_next_trigger;
+use crate::task::{get_current_user_token, get_current_user_trap_context, get_current_user_trap_context_va};
+use crate::timer::{self, set_next_trigger};
 use crate::global_asm;
 
 use riscv::register::sie;
@@ -34,11 +36,20 @@ pub fn init() {
 }
 
 fn set_kernel_trap_entry() {
+    extern "C" {
+        fn __alltraps_kernel();
+        fn __alltraps();
+    }
+
+    let alltraps_kernel_va = (__alltraps_kernel as usize) - (__alltraps as usize)  + TRAMPOLINE;
+
     unsafe  {
         stvec::write(
-            trap_from_kernel as usize, 
+            alltraps_kernel_va, 
             TrapMode::Direct
         );
+
+        sscratch::write(trap_from_kernel as usize) ;
     }
 }
 
@@ -77,7 +88,6 @@ fn set_user_trap_entry() {
 #[no_mangle]
 pub fn trap_handler() -> ! {
     set_kernel_trap_entry();
-    let ctx = current_trap_ctx();
     // Read the trap cause and trap value from CSR registers.
     let scause = scause::read();
     let stval = stval::read();
@@ -87,15 +97,26 @@ pub fn trap_handler() -> ! {
     match scause.cause() {
         // Handle system calls.
         Trap::Exception(Exception::UserEnvCall) => {
+            let current_trap_context = get_current_user_trap_context();
             // Advance the program counter to skip the ecall instruction.
-            ctx.sepc += 4;
+            current_trap_context.sepc += 4;
+
+            InterruptController::global_enable();
             // Handlding the system call using a0~a5
             // and store the result in `a0`.
             let args = [
-                ctx.x[10], ctx.x[11], ctx.x[12],
-                ctx.x[13], ctx.x[14], ctx.x[15],
+                current_trap_context.x[10], 
+                current_trap_context.x[11], 
+                current_trap_context.x[12],
+                current_trap_context.x[13], 
+                current_trap_context.x[14], 
+                current_trap_context.x[15],
             ];
-            ctx.x[10] = syscall_handler(ctx.x[17], args) as usize;
+            let result = syscall_handler(current_trap_context.x[17], args) as usize;
+
+            // syscall such as exec maybe change current context
+            let new_trap_context = get_current_user_trap_context();
+            new_trap_context.x[10] = result
         },
 
         // Handle store-related faults.
@@ -105,13 +126,14 @@ pub fn trap_handler() -> ! {
         | Trap::Exception(Exception::LoadPageFault) => {
             log::error!("Page Fault in application, kernel killed it."); 
             // Run the next application as the current one is terminated.
-            exit_current_and_run_next();
+            // exit_current_and_run_next();
+            unimplemented!()
         },
 
         // Handle illegal instructions.
         Trap::Exception(Exception::IllegalInstruction) => {
             log::error!("Illegal instruction in application, kernel killed it.");
-            exit_current_and_run_next();
+            unimplemented!()
         },
 
         // Handle unknown exceptions.
@@ -121,7 +143,7 @@ pub fn trap_handler() -> ! {
 
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
             set_next_trigger();
-            suspend_current_and_run_next();
+            timer::interrupt_request_handler();
         },
 
         // Handle unsupported traps.
@@ -171,9 +193,10 @@ pub fn trap_handler() -> ! {
 /// - Requires #[repr(C)] for predictable struct layout matching assembly expectations.
 /// - TRAMPOLINE must be identity-mapped in all address spaces.
 pub fn trap_return() -> ! {
+    InterruptController::global_disable();
     set_user_trap_entry();
-    let trap_cx_ptr = TRAP_CONTEXT;
-    let user_satp = current_user_token();
+    let user_satp = get_current_user_token();
+    let trap_cx_ptr: usize = get_current_user_trap_context_va().into();
 
     extern "C" {
         fn __alltraps();
@@ -201,8 +224,23 @@ pub fn trap_return() -> ! {
 
 #[no_mangle]
 // Unimplement: traps/interrupts/exceptions
-pub fn trap_from_kernel() -> ! {
-    panic!("a trap from kernel!")
+pub fn trap_from_kernel(_trap_context: &TrapContext){
+    let scause = scause::read();
+    let stval = stval::read();
+
+    match scause.cause() {
+        Trap::Interrupt(Interrupt::SupervisorExternal) => {
+            unimplemented!()
+        },
+        Trap::Interrupt(Interrupt::SupervisorTimer) => {
+            timer::interrupt_request_handler();
+        },
+        _ => {
+            panic!("Unsupport trap from kernel: scause.cause {:?}, stval {:#x}",
+                scause.cause(), stval
+            );
+        }
+    }
 }
 
 

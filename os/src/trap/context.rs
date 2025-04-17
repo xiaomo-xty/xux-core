@@ -4,6 +4,10 @@ use riscv::register::sstatus::{
     self, Sstatus, SPP
 };
 
+use crate::register;
+
+
+
 /// Represents the context of a trap (e.g., during an interrupt or system call).
 /// 
 /// The layout of `TrapContext` in memory is as follows:
@@ -45,22 +49,38 @@ use riscv::register::sstatus::{
 /// ```
 #[repr(C)]
 pub struct TrapContext {
-    /// General-purpose registers [0..31]
+    // =====================================+
+    // | Save   | when (user  ) -> (kernel) |
+    // +--------+---------------------------+
+    // | Restore| when (kernel) -> (user)   |
+    // =====================================+
+    
+    /// (0~31) common register
     pub x: [usize; 32],   
-    /// CSR sstatus
+    /// (32) CSR sstatus
     pub sstatus: Sstatus, 
-    /// CSR sepc
+    /// (33) CSR sepc
     pub sepc: usize,    
-    /// Addr of Page Table  
+
+    // =====================================+
+    // | Save   | when (kernel) -> (user  ) |
+    // +--------+---------------------------+
+    // | Restore| when (user  ) -> (kernel) |
+    // =====================================+
+    /// (34) Addr of Page Table
     pub kernel_satp: usize,
-    /// kernel stack
+    /// (35) kernel stack
     pub kernel_sp: usize,
-    /// Addr of trap_handler function.
+    /// (36) kernel tp
+    pub kernel_tp: usize,
+    /// (37) Addr of trap_handler function.
     pub trap_handler: usize,
 }
 
 // use crate::batch::TrapContext;
 impl TrapContext {
+
+
     /// Set the stack pointer (SP/X2) for the current context.
     ///
     /// # Arguments
@@ -113,6 +133,7 @@ impl TrapContext {
         // the hardware will set SPP to User, allowing correct return via `sret`.
         sstatus.set_spp(SPP::User);
 
+        let kernel_tp = register::Tp::read();
         // 2. Initialize trap frame with isolation between user/kernel resources
         let mut ctx = Self {
             x: [0; 32],     // Zero-initialize general-purpose registers.
@@ -129,6 +150,8 @@ impl TrapContext {
             
             kernel_sp,      // Per-CPU kernel stack for trap handling.
                             // Provides stack isolation between user/kernel modes.
+            
+            kernel_tp,
             
             trap_handler,   // Entry point of the kernel's trap handling routine.
                             // Stored here for fast access during trap vector setup.

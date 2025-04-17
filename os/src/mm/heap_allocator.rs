@@ -2,7 +2,8 @@ use buddy_system_allocator::LockedHeap;
 use crate::{config::KERNEL_HEAP_SIZE, println};
 
 
-
+/// I should implement a slab allcator
+/// Request space for buddy dynamiclly
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeap =  LockedHeap::empty();
 

@@ -1,7 +1,7 @@
 use alloc::string::String;
 use os_macros::syscall_register;
 
-use crate::{mm::user_ptr::UserBuffer, println, task::current_user_token};
+use crate::{mm::user_ptr::UserBuffer, println, task::get_current_user_token};
 
 /// a
 #[syscall_register(SYSCALL_TEST)]
@@ -14,7 +14,7 @@ pub fn sys_test (
     arg5: usize
 ) {
     let great_cross_page_ptr = great_cross_page_ptr as *const u8;
-    let string_buffer = UserBuffer::new(current_user_token(), great_cross_page_ptr, great_len);
+    let string_buffer = UserBuffer::new(get_current_user_token(), great_cross_page_ptr, great_len);
     let great_str:String = string_buffer.into();
 
     println!("{}", great_str);

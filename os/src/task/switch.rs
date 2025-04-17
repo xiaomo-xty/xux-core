@@ -1,3 +1,4 @@
+
 use super::TaskContext;
 use core::arch::global_asm;
 
@@ -35,8 +36,24 @@ extern "C" {
     ///     __switch(current_task_context, next_task_context);
     /// }
     /// ```
-    pub fn __switch(
-        current_task_cx_ptr: *mut TaskContext,
-        next_task_cx_ptr: *const TaskContext,
+    fn __switch(
+        save_context_to  :   *mut TaskContext,
+        load_context_from: *const TaskContext,
     );
+}
+
+
+/// package unsafe __switch, support more safety interface
+#[inline(always)]
+pub fn switch(
+    save_context_to: &mut TaskContext,
+    load_context_from: &TaskContext,
+    // _guard: SpinMutexGuard<'_,()>
+) {
+    unsafe {
+        __switch(
+            save_context_to as *mut TaskContext, 
+            load_context_from as *const TaskContext
+        );
+    }
 }

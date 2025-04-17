@@ -18,7 +18,7 @@ pub fn init() {
     log::info!("Memory manager initializing.");
     heap_allocator::init_heap();
     frame_allocator::init_frame_allocator();
-    KERNEL_SPACE.exclusive_access().activate();
+    KERNEL_SPACE.lock().activate();
     log::info!("Memory manager initialized successfully.");
 }
 
