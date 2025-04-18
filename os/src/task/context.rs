@@ -2,6 +2,8 @@
 
 use crate::trap::trap_return;
 
+use super::scheduler::new_user_task_start;
+
 /// TaskContext Layout in Memory:
 /// ```text
 /// ┌───────────────────────────────────────┐
@@ -56,13 +58,15 @@ impl TaskContext {
     ///     s: s_0..12
     /// }
     /// ```
-    pub fn goto_trap_return(kernel_stack_top: usize)  -> Self {
+    pub fn goto_new_user_task_start(kernel_stack_top: usize)  -> Self {
         Self {
-            ra: trap_return as usize,
+            ra: new_user_task_start as usize,
             sp: kernel_stack_top,
             s: [0; 12],
         }
     }
+
+    // pub fn goto_new_kernel_task_start(kernel_stack_top: usize, kernenl_fn: Fn) -> Self{}
 
     
 }

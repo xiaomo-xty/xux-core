@@ -3,6 +3,10 @@
 //! This module provides isolation and synchronization primitives for SMP (Symmetric Multi-Processing)
 //! systems, with support for per-Processor task management and interrupt control.
 
+use core::arch::asm;
+use core::cell::UnsafeCell;
+use core::marker::PhantomData;
+use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use alloc::boxed::Box;
@@ -11,7 +15,9 @@ use lazy_static::lazy_static;
 use alloc::vec::Vec;
 
 
-use crate::{interupt::InterruptState, sync::spin::mutex::SpinMutex};
+use crate::register::{self, Tp};
+use crate::task::{TaskContext, TaskControlBlock};
+use crate::{interupt::InterruptState, sync::spin::mutex::IRQSpinLock};
 use crate::task::scheduler::{FiFoScheduler, Scheduler};
 
 /// A unique identifier for a Processor core (hart) in the system.
@@ -30,39 +36,52 @@ impl From<ProcessorId> for usize {
 /// The number of Processor cores supported by this system.
 pub const CPU_NUM: usize = 1;
 
+static mut PROCESSORS_LOCAL: [MaybeUninit<ProcessorLocal>; CPU_NUM] = 
+    unsafe { MaybeUninit::uninit().assume_init() };
 
+
+pub fn init_processor(hart_id: usize) {
+    unsafe { init_processor_local(hart_id) ;}
+}
+
+unsafe fn init_processor_local(
+    hart_id: usize,
+) {
+    PROCESSORS_LOCAL[hart_id].write(ProcessorLocal::new(hart_id));
+    let current_processor_lcoal_data_ptr = PROCESSORS_LOCAL[hart_id].assume_init_ref() as *const ProcessorLocal as usize;
+    Tp::write(current_processor_lcoal_data_ptr);
+}
+
+#[inline]
+fn current_processor_local() -> &'static mut ProcessorLocal {
+    let current_processor_lcoal_data_ptr = Tp::read();
+    unsafe { 
+        &mut *(current_processor_lcoal_data_ptr as *mut ProcessorLocal) 
+    }
+
+    // let id = current_processor_id().0;
+    // &mut PROCESSORS_LOCAL[id] // 或 get_unchecked
+}
 
 lazy_static! {
-    /// Per-CPU local data (lock-free access)
-    static ref PROCESSORS_LOCAL: Vec<ProcessorLocal> = {
-        log::info!("Initializing {} processors (local)", CPU_NUM);
-        (0..CPU_NUM).map(|_| ProcessorLocal::new()).collect()
-    };
-
-    /// Per-CPU shared data (protected by SpinMutex)
-    static ref PROCESSORS_SHARED: Vec<SpinMutex<ProcessorShared>> = {
+    /// Per-CPU shared data (protected by IRQSpinLock)
+    static ref PROCESSORS_SHARED: Vec<IRQSpinLock<ProcessorShared>> = {
         log::info!("Initializing {} processors (shared)", CPU_NUM);
-        (0..CPU_NUM).map(|_| SpinMutex::new(ProcessorShared::new())).collect()
+        (0..CPU_NUM).map(|_| IRQSpinLock::new(ProcessorShared::new())).collect()
     };
 }
 
 /// Safe access to current CPU's local data
-#[inline]
-fn current_processor_local() -> &'static ProcessorLocal {
-    let id = current_processor_id().0;
-    &PROCESSORS_LOCAL[id]  // 或 get_unchecked
-}
+
 
 /// Safe access to current CPU's shared data
 #[inline]
-fn current_processor_shared() -> &'static SpinMutex<ProcessorShared> {
+fn current_processor_shared() -> &'static IRQSpinLock<ProcessorShared> {
     let id = current_processor_id().0;
     &PROCESSORS_SHARED[id]  // 或 get_unchecked
 }
 
 
-// temp state
-type RWLock<T> = SpinMutex<T>;
 
 
 pub struct ProcessorShared {
@@ -86,29 +105,80 @@ impl ProcessorShared {
 /// and interrupt locking state.
 /// A core can't visit B core's Processor struct, so I remove the atomic
 pub struct ProcessorLocal {
-
+    // cann't be modify
+    hart_id: usize,
     // - Task schedule
     /// maybe support multiple core scheduler
-    pub scheduler: SpinMutex<Box<dyn Scheduler>>,
+    scheduler: MaybeUninit<Box<dyn Scheduler>>,
+    current_task: Option<Arc<TaskControlBlock>>,
+    // A medium other task return schduler loop
+    pub schedule_loop_task_context: TaskContext,
     
     // - Interrupt
     
     /// Nesting counter for interrupt disable operations.
-    pub interrupt_nest_cnt: AtomicUsize,
+    interrupt_nest_cnt: AtomicUsize,
     /// Saved interrupt state for restoration when unlocking.
-    pub is_enable_interrupt: AtomicBool,
+    is_enable_interrupt: AtomicBool,
 }
 
 impl ProcessorLocal {
     /// Creates a new Processor instance for the given hardware thread.
     ///
     /// # Arguments
-    pub fn new() -> Self {
+    pub fn new(hart_id: usize) -> Self {
         Self {
-            scheduler: SpinMutex::new(Box::new(FiFoScheduler::new(1))),
+            hart_id,
+            scheduler: MaybeUninit::uninit(),
+            current_task: None,
+            schedule_loop_task_context: TaskContext::zero_init(),
             interrupt_nest_cnt : AtomicUsize::new(0),
             is_enable_interrupt: AtomicBool::new(true),
         }
+    }
+
+    pub fn timer_tick(&self) {
+        self.get_scheduler().yield_current();
+    }
+
+    #[inline]
+    fn get_scheduler(&self) -> &Box<dyn Scheduler>{
+        unsafe { self.scheduler.assume_init_ref() }
+    }
+
+
+    // should be call after memory init
+    pub fn init_scheduler(&mut self, schduler: Box<dyn Scheduler>) {
+        self.scheduler.write(schduler);
+    }
+
+
+    pub fn get_current_task(&self) -> Arc<TaskControlBlock> {
+        self.current_task.as_ref().unwrap().clone()
+    }
+
+    pub fn set_current_task(&mut self, task: Arc<TaskControlBlock> ) {
+        self.current_task = Some(task);
+    }
+
+    pub fn clean_current_task(&mut self) {
+        self.current_task = None;
+    }
+
+    pub fn get_schedule_loop_context(&mut self) -> &mut TaskContext{
+        &mut self.schedule_loop_task_context
+    }
+
+    pub fn add_task(&self, task_control_block: Arc<TaskControlBlock>) {
+        self.get_scheduler().add_task(task_control_block);
+    }
+
+    pub fn fetch_task(&self) -> Option<Arc<TaskControlBlock>> {
+        self.get_scheduler().fetch_task()
+    }
+
+    pub fn yield_current(&self) {
+        self.get_scheduler().yield_current();
     }
 
     // ========== 中断管理接口 ========== //
@@ -149,13 +219,13 @@ pub fn current_processor_id() -> ProcessorId {
 /// Caller must ensure:
 /// - No other references to this Processor exist
 /// - The ID is valid (0 ≤ id < CPU_NUM)
-pub fn get_processor_by_id(id: ProcessorId) -> &'static SpinMutex<ProcessorShared> {
+pub fn get_processor_by_id(id: ProcessorId) -> &'static IRQSpinLock<ProcessorShared> {
     let id: usize = id.into();
     log::debug!("return processor[{}]", id);
     &PROCESSORS_SHARED[id]
 }
 
 
-pub fn get_current_processor() -> &'static ProcessorLocal {
+pub fn get_current_processor() -> &'static mut  ProcessorLocal {
     current_processor_local()
 }

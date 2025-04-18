@@ -1,8 +1,8 @@
-break switch
-break schedule_loop
+break rust_main
+break trap_return
 
 echo "starting debug!"
 
-layout src
+layout asm
 # ..
 continue

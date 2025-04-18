@@ -9,7 +9,7 @@ use crate::{
     board::MMIO, 
     config::{PAGE_SIZE, PHYSTOP, TRAMPOLINE}, 
     mm::map_area::{MapArea, MapPermission, MapType}, 
-    sync::spin::mutex::SpinMutex, 
+    sync::spin::mutex::IRQSpinLock, 
 };
 
 use super::{
@@ -30,9 +30,9 @@ extern "C" {
 }
 
 lazy_static! {
-    pub static ref KERNEL_SPACE: Arc< SpinMutex<MemorySet> > =
+    pub static ref KERNEL_SPACE: Arc< IRQSpinLock<MemorySet> > =
         Arc::new(
-            SpinMutex::new(
+            IRQSpinLock::new(
                 MemorySet::new_kernel()
             )
         );
@@ -217,18 +217,6 @@ impl MemorySet {
 
 impl MemorySet {
     
-    pub fn new_user() -> Self {
-        let mut memory_set = Self::new_bare();
-
-        memory_set.map_trampoline();
-
-
-        memory_set
-
-
-    }
-
-    
     /// Maps the user-space trampoline page to the kernel's trampoline code.
     ///
     /// # Design Rationale
@@ -264,7 +252,9 @@ impl MemorySet {
 
 impl MemorySet {
     pub fn from_elf(elf_data: &[u8]) -> (Self, usize, usize) {
-        let mut memory_set = Self::new_user();
+        let mut memory_set = Self::new_bare();
+
+        memory_set.map_trampoline();
 
         let elf = xmas_elf::ElfFile::new(elf_data).unwrap();
         let elf_header = elf.header;
@@ -303,12 +293,12 @@ impl MemorySet {
         // Div by guard page
         let user_stack_base: usize = usize::from(max_end_va) + PAGE_SIZE;
         
-
         (
             memory_set,
             user_stack_base,
             elf.header.pt2.entry_point() as usize,
         )
+
     }
 
 

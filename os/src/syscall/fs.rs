@@ -2,7 +2,7 @@ use core::panic;
 
 use os_macros::syscall_register;
 
-use crate::{mm::user_ptr::UserPtr, print, task::get_current_user_token};
+use crate::{mm::user_ptr::UserPtr, print, task::current_user_token};
 
 const FD_STDOUT: usize = 1;
 
@@ -25,7 +25,7 @@ const FD_STDOUT: usize = 1;
 pub fn sys_write(fd: usize, buf: *const u8, len: usize) -> isize {
     match fd {
         FD_STDOUT => {
-            let user_ptr = UserPtr::new(get_current_user_token(), buf);
+            let user_ptr = UserPtr::new(current_user_token(), buf);
             let buffer = user_ptr.read_slice(len);
 
             match buffer {

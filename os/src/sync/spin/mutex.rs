@@ -1,156 +1,171 @@
-#![allow(unused)]
-use core::{
-    cell::UnsafeCell,
-    hint,
-    ops::{Deref, DerefMut},
-    sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicUsize, Ordering}, u32, usize,
-};
+//! Synchronization primitives based on spinning, including interrupt-safe variants.
+//!
+//! This module provides two main spinlock implementations:
+//! - [`SpinLock`]: A basic spinlock for thread synchronization
+//! - [`IRQSpinLock`]: An interrupt-disabling spinlock for kernel contexts
 
-use crate::{interupt::{InterruptController, InterruptState, IntrReqGuard}, processor::current_processor_id};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use lock_api::{GuardSend, RawMutex};
+use crate::{interupt::InterruptController, processor::current_processor_id};
 
-/// A spin-based mutual exclusion lock (spinlock)
+/// A mutual exclusion lock based on spinning (busy-waiting)
 ///
-/// This provides mutually exclusive access to the underlying data through
-/// a busy-wait loop (spinning) while waiting for the lock to become available.
-///
-/// # Features
-/// - Optimized spinning with `hint::spin_loop()`
-/// - Debug-mode recursion checking
-/// - Memory ordering guarantees (Acquire/Release semantics)
+/// This is a basic spinlock that provides mutually exclusive access to data
+/// between threads. It does not disable interrupts and should not be used
+/// in interrupt contexts.
 ///
 /// # Example
 /// ```
-/// let lock = SpinMutex::new(42);
+/// let lock = SpinLock::new(0);RawMutexRawSpinLock
 /// let mut guard = lock.lock();
-/// *guard = 10;
+/// *guard += 1;
 /// ```
+pub type SpinLock<T> = lock_api::Mutex<RawSpinLock, T>;
+
+/// A guard that provides mutable access to the data protected by [`SpinLock`]
 ///
-/// 
-/// # Safety Note
-/// - This is a ​**spinlock**, not a sleep-wait lock. Do not hold it for long periods.
-/// - Always disable interrupts before locking in kernel mode.
-/// - In user mode, consider `std::sync::Mutex` instead.
-pub struct SpinMutex<T> {
+/// When the guard goes out of scope, the lock will be automatically released.
+pub type SpinLockGuard<'a, T> = lock_api::MutexGuard<'a, RawSpinLock, T>;
+
+/// An interrupt-safe spinlock that disables interrupts while held
+///
+/// This variant automatically disables interrupts when acquired and
+/// restores them when released, making it safe for use in interrupt
+/// contexts and kernel code.
+///
+/// # Safety
+/// - Must not be held across sleep operations
+/// - Interrupts remain disabled while the lock is held
+pub type IRQSpinLock<T> = lock_api::Mutex<RawIrqSpinlock, T>;
+
+/// A guard that provides mutable access to the data protected by [`IRQSpinLock`]
+///
+/// When dropped, this guard will release the lock and restore interrupt state.
+pub type IRQSpinLockGuard<'a, T> = lock_api::MutexGuard<'a, RawIrqSpinlock, T>;
+
+/// The raw implementation of a basic spinlock
+///
+/// This provides the low-level synchronization primitive that [`SpinLock`]
+/// builds upon. It uses an atomic boolean to track lock state and includes
+/// optional debug checks for recursion detection.
+pub struct RawSpinLock {
     /// Atomic flag indicating whether the lock is held
     locked: AtomicBool,
-    /// The protected data wrapped in UnsafeCell for interior mutability
-    data: UnsafeCell<T>,
     
     #[cfg(debug_assertions)]
     /// Track lock holder for recursion detection (debug only)
     holder_id: AtomicUsize,
 }
 
-unsafe impl<T> Sync for SpinMutex<T> where T: Send {}
-unsafe impl<T> Send for SpinMutex<T> where T: Send {}
-
-/// A guard that provides mutable access to the data protected by a SpinMutex
-///
-/// When the guard goes out of scope, the lock will be automatically released.
-/// Implements `Deref` and `DerefMut` for transparent access to the inner data.
-pub struct SpinMutexGuard<'a, T> {
-    /// Reference to the parent spinlock
-    mutex: &'a SpinMutex<T>,
-    irq_guard: IntrReqGuard,
-}
-
-
-impl<T> SpinMutex<T> {
-    /// Sentinel value indicating no holder (debug builds only)
+impl RawSpinLock {
+    /// Sentinel value indicating no current holder
     const NO_HOLDER: AtomicUsize = AtomicUsize::new(usize::MAX);
 
-    /// Creates a new spinlock protecting the provided data
-    pub const fn new(data: T) -> Self {
-        Self {
-            locked: AtomicBool::new(false),
-            data: UnsafeCell::new(data),
-
-            #[cfg(debug_assertions)]
-            holder_id: Self::NO_HOLDER,
+    #[cfg(debug_assertions)]
+    /// Check for potential deadlock situations in debug mode
+    ///
+    /// This will panic if the current CPU already holds this lock,
+    /// indicating a recursive locking attempt that could deadlock.
+    fn check_dead_lock(&self) {
+        let holder = self.holder_id.load(Ordering::Relaxed);
+        if holder != usize::MAX && holder == current_processor_id().into() {
+            panic!("dead lock occur, holder: {}", holder);
         }
     }
+}
 
-    /// Locks the spinlock and returns a guard
+unsafe impl RawMutex for RawSpinLock {
+    const INIT: RawSpinLock = RawSpinLock { 
+        locked: AtomicBool::new(false),
+        #[cfg(debug_assertions)]
+        holder_id: Self::NO_HOLDER,
+    };
+    
+    type GuardMarker = GuardSend;
+
+    /// Acquire the spinlock, spinning until available
     ///
-    /// # Behavior
-    /// - Spins (with backoff) until lock is acquired
-    /// - In debug builds, checks for recursive locking
-    /// - Uses Acquire ordering for synchronization
-    pub fn lock(&self) -> SpinMutexGuard<'_, T> {
-        log::debug!("prepare get lock");
-        let irq_guard = InterruptController::intr_disable_nested();
-
+    /// This will busy-wait while the lock is held by another thread.
+    /// In debug builds, it also checks for recursive locking attempts.
+    fn lock(&self) {
+        log::debug!("accquire lock");
         #[cfg(debug_assertions)]
         self.check_dead_lock();
 
-
-        log::debug!("start spin for get lock");
-        while self.locked.swap(true, Ordering::Acquire) {
-            // log::debug!("spin..");
-            hint::spin_loop();
+        while !self.try_lock() {
+            core::hint::spin_loop()
         }
-        log::debug!("end spin");
-        
+
         #[cfg(debug_assertions)] 
         {
             let cpu_id = current_processor_id();
             self.holder_id.store(cpu_id.into(), Ordering::Relaxed);
         }
-
-        SpinMutexGuard { mutex: self, irq_guard }
     }
 
-    /// Checks for recursive locking (debug builds only)
+    /// Attempt to acquire the lock without spinning
     ///
-    /// # Returns
-    /// `true` if current CPU already holds this lock
-    #[inline(always)]
-    pub fn check_dead_lock(&self) {
-        #[cfg(debug_assertions)] {
-            let holder = self.holder_id.load(Ordering::Relaxed);
-            if holder != usize::MAX && holder == current_processor_id().into() {
-                panic!("dead lock occur, holder: {}", holder);
-            }
-        }
-        #[cfg(not(debug_assertions))] {
-            false
-        }
+    /// Returns `true` if the lock was acquired, `false` otherwise.
+    fn try_lock(&self) -> bool {
+        self.locked
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .is_ok()
     }
-}
 
-impl<T> Deref for SpinMutexGuard<'_, T> {
-    type Target = T;
-
-    /// Immutable access to protected data
+    /// Release the lock
     ///
     /// # Safety
-    /// Protected by spinlock - no concurrent access possible
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.mutex.data.get() }
-    }
-}
-
-impl<T> DerefMut for SpinMutexGuard<'_, T> {
-    /// Mutable access to protected data
-    ///
-    /// # Safety
-    /// Protected by exclusive spinlock ownership
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.mutex.data.get() }
-    }
-}
-
-impl<T> Drop for SpinMutexGuard<'_, T> {
-    /// Releases the lock when guard is dropped
-    ///
-    /// Uses Release ordering to ensure all critical section operations
-    /// complete before lock release.
-    fn drop(&mut self) {
-        self.mutex.locked.store(false, Ordering::Release);
+    /// - Must only be called when the lock is held by the current thread
+    unsafe fn unlock(&self) {
+        self.locked.store(false, Ordering::Release);
         #[cfg(debug_assertions)]
         {
-            self.mutex.holder_id.store(usize::MAX, Ordering::Release);
+            self.holder_id.store(usize::MAX, Ordering::Release);
         }
         log::debug!("release lock");
+    }
+}
+
+/// The raw implementation of an interrupt-disabling spinlock
+///
+/// This wraps a [`RawSpinLock`] and adds interrupt state management,
+/// making it safe for use in interrupt contexts.
+pub struct RawIrqSpinlock {
+    /// The underlying spinlock implementation
+    inner: RawSpinLock,
+}
+
+unsafe impl RawMutex for RawIrqSpinlock {
+    const INIT: RawIrqSpinlock = RawIrqSpinlock { 
+        inner: RawSpinLock::INIT
+    };
+    
+    type GuardMarker = GuardSend;
+
+    /// Acquire the lock while disabling interrupts
+    ///
+    /// This will:
+    /// 1. Disable interrupts
+    /// 2. Spin until the lock is acquired
+    fn lock(&self) {
+        InterruptController::intr_disable_nested();
+        self.inner.lock();
+    }
+
+    /// Attempt to acquire the lock without spinning
+    ///
+    /// Returns `true` if the lock was acquired, `false` otherwise.
+    /// Does not modify interrupt state for failed attempts.
+    fn try_lock(&self) -> bool {
+        self.inner.try_lock()
+    }
+
+    /// Release the lock and restore interrupts
+    ///
+    /// # Safety
+    /// - Must only be called when the lock is held by the current thread
+    unsafe fn unlock(&self) {
+        self.inner.unlock();
+        InterruptController::intr_enable_nested();
     }
 }

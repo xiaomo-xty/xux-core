@@ -73,26 +73,33 @@ mod board;
 
 use core::arch::global_asm;
 
-use processor::get_current_processor;
+use processor::init_processor;
+use task::scheduler::schedule_loop;
 
 // os entry
 global_asm!(include_str!("entry.asm"));
 global_asm!(include_str!("link_app.S"));
 
 
+/// - hart_id would be place in a0
 /// - Would be called by `entry.asm`.
 /// - Don't return.
 #[no_mangle]
-pub fn rust_main() -> ! {
+pub fn rust_main(hart_id: usize) -> ! {
     clear_bss();
+    init_processor(hart_id);
+
     io::init();
+
     log::info!("Logger turn on");
     log::debug!("Debug Logger turn on");
+    log::info!("Current hart id: {}", hart_id);
     
     mm::init();
     mm::heap_allocator::heap_test();
 
     mm::memory_set::remap_test();
+
 
 
     trap::init();
@@ -116,11 +123,7 @@ pub fn rust_main() -> ! {
     timer::set_next_trigger();
     
     log::info!("test successed!Welcom ot xux-os!");
-    {
-        let processor = get_current_processor();
-        let mut scheduler_guard = processor.scheduler.lock();
-        scheduler_guard.run();
-    }
+    schedule_loop();
     unreachable!();
     
 }

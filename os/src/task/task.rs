@@ -1,10 +1,10 @@
-use core::{fmt, usize};
+use core::{fmt, ptr, sync::atomic::{AtomicPtr, Ordering}, usize};
 
-use alloc::{format, string::String, sync::{Arc, Weak}, vec::Vec};
+use alloc::{boxed::Box, format, string::String, sync::{Arc, Weak}, vec::Vec};
 use bitflags::bitflags;
 
 
-use crate::{mm::{address::{PhysPageNum, VirtPageNum}, memory_set::MemorySet, KERNEL_SPACE}, sync::spin::mutex::{SpinMutex, SpinMutexGuard}, trap::{trap_handler, TrapContext}};
+use crate::{mm::{address::{PhysPageNum, VirtPageNum}, memory_set::MemorySet, KERNEL_SPACE}, sync::spin::mutex::{IRQSpinLock, IRQSpinLockGuard}, trap::{trap_handler, TrapContext}};
 
 use super::{allocator::{KernelStackALlocator, KernelStackGuard, RecycleAllocator, TaskHandle, TaskHandleAllocator, TaskID, TrapContextPageAllocator, TrapContextPageGuard, UserStackAlloctor, UserStackGuard}, TaskContext};
 
@@ -42,20 +42,6 @@ impl fmt::Debug for TaskControlBlock {
     }
 }
 
-impl fmt::Debug for TaskUserResource {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let children_len = self.children.lock().len();
-        let task_group_len = self.task_group.lock().len();
-        
-        f.debug_struct("TaskUserResource")
-            .field("task_group_id", &self.task_group_id)
-            .field("children_count", &children_len)
-            .field("task_group_count", &task_group_len)
-            .field("entry_point", &self.entry_point)
-            .finish_non_exhaustive()
-    }
-}
-
 
 
 /// Task's Control information used by kernel
@@ -73,7 +59,8 @@ pub struct TaskControlBlockInner {
 
 
 pub struct TaskControlBlock { 
-    inner: SpinMutex<TaskControlBlockInner>,
+    inner: IRQSpinLock<TaskControlBlockInner>,
+    pending_lock: AtomicPtr<()>,
 }
 
 /// UserResource
@@ -85,26 +72,70 @@ pub struct TaskUserResource {
     // pub fs: Arc<FileSystem>,           // 文件系统上下文
     // pub files: Arc<Mutex<FileTable>>,  // 文件描述符表
     // pub signal: Arc<SignalHandler>,    // 信号处理
-    pub memory_set: Arc<SpinMutex<MemorySet>>, // 内存管理（用户空间）
+    pub memory_set: Arc<IRQSpinLock<MemorySet>>, // 内存管理（用户空间）
 
     pub parent: Option<Weak<TaskControlBlock>>, // parent leader
 
 
-    pub children: Arc<SpinMutex<Vec<Arc<TaskControlBlock>>>>,   // the leader of child task group
-    pub task_group: Arc<SpinMutex<Vec<Arc<TaskControlBlock>>>>, // task_group
+    pub children: Arc<IRQSpinLock<Vec<Arc<TaskControlBlock>>>>,   // the leader of child task group
+    pub task_group: Arc<IRQSpinLock<Vec<Arc<TaskControlBlock>>>>, // task_group
 
-    user_stack_id_allocator: Arc<SpinMutex<RecycleAllocator>>,
+    user_stack_id_allocator: Arc<IRQSpinLock<RecycleAllocator>>,
     pub user_stack_guard: UserStackGuard,
     pub entry_point: usize,
 
     pub trap_context_guard: TrapContextPageGuard,
 }
 
+impl fmt::Debug for TaskUserResource {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // 避免直接打印需要锁的字段，而是打印它们的摘要信息
+        let memory_set_info = format!("MemorySet@{:p}", &*self.memory_set.lock());
+        let children_count = self.children.lock().len();
+        let task_group_count = self.task_group.lock().len();
+        
+        f.debug_struct("TaskUserResource")
+            .field("parent_group_id", &self.parent_group_id)
+            .field("\ntask_group_id", &self.task_group_id)
+            .field("\nmemory_set", &memory_set_info)
+            .field("\nparent", &self.parent.as_ref().map(|p| p.strong_count())) // 只打印引用计数
+            .field("\nchildren_count", &children_count)
+            .field("\ntask_group_count", &task_group_count)
+            .field("\nuser_stack top", &self.user_stack_guard.get_top()) // 假设 UserStackGuard 实现了 Debug
+            .field("\nentry_point", &format_args!("{:#x}", self.entry_point))
+            .field("\ntrap_context_page vpn:", &self.trap_context_guard.get_trap_vpn()) // 假设 TrapContextPageGuard 实现了 Debug
+            .finish()
+    }
+}
+
 
 
 impl TaskControlBlock {
-    pub fn lock(&self) -> SpinMutexGuard<TaskControlBlockInner> {
+    pub fn lock(&self) -> IRQSpinLockGuard<TaskControlBlockInner> {
         self.inner.lock()
+    }
+
+    pub unsafe fn transfer_lock(&self, guard: IRQSpinLockGuard<'_, TaskControlBlockInner>) {
+        log::debug!("transfer {}'s lock guard", guard.name);
+        // 将守卫转为堆分配（延长生命周期）
+        let boxed = Box::new(guard);
+        let ptr = Box::into_raw(boxed) as *mut ();
+
+        // 原子存储指针（Release保证之前的操作对接收方可见）
+        self.pending_lock.store(ptr, Ordering::Release);
+    }
+
+    /// # Safety
+    /// - 必须在目标执行流中调用且仅调用一次
+    pub unsafe fn take_lock(&self) -> IRQSpinLockGuard<'_, TaskControlBlockInner> {
+        // 获取并清空指针
+        let ptr = self.pending_lock.swap(ptr::null_mut(), Ordering::Acquire);
+        assert!(!ptr.is_null(), "No pending lock");
+
+        // 转换回守卫（恢复生命周期）
+        let guard = *Box::from_raw(ptr as *mut IRQSpinLockGuard<TaskControlBlockInner>);
+        log::debug!("take {}'s lock guard", guard.name);
+        guard
     }
 
     pub fn new_from_elf(elf_data: &[u8], app_id: usize) -> Arc<Self> {
@@ -116,7 +147,8 @@ impl TaskControlBlock {
         let task_control_block = Arc::new(
             TaskControlBlock 
             { 
-                inner: SpinMutex::new(inner) 
+                inner: IRQSpinLock::new(inner),
+                pending_lock: AtomicPtr::new(core::ptr::null_mut()),
             }
         );
 
@@ -129,13 +161,6 @@ impl TaskControlBlock {
         task_control_block
     }
 
-    pub fn set_state(&self, target_state: TaskState){
-        self.lock().state = target_state;
-    }
-
-    pub fn get_state(&self) -> TaskState {
-        self.lock().state
-    }
 
     // Disjoint set
     pub fn is_leader(&self) -> bool {
@@ -149,6 +174,7 @@ impl TaskControlBlock {
     }
 
     pub fn with_user_res<R>(&self, f: impl FnOnce(Option<&mut TaskUserResource>) -> R) -> R {
+        log::debug!("operator with user res");
         let mut inner = self.inner.lock();
         f(inner.user_res.as_mut())
     }
@@ -170,7 +196,7 @@ impl TaskControlBlockInner {
             name,
             state: TaskState::Ready,
             kernel_stack_guard,
-            context: TaskContext::goto_trap_return(kernel_stack_top),
+            context: TaskContext::goto_new_user_task_start(kernel_stack_top),
             user_res: None,
         }
     }
@@ -184,6 +210,8 @@ impl TaskControlBlockInner {
         let (memory_set, user_stack_base, entry_point) = 
         MemorySet::from_elf(elf_data);
 
+        log::info!("entry_point: 0x{:x}", entry_point);
+
 
         self.user_res = Some(TaskUserResource::new(
             self.task_handle.id(),
@@ -191,9 +219,17 @@ impl TaskControlBlockInner {
             Arc::downgrade(&task_control_block), // 创建弱引用
             user_stack_base,
             kernel_stack_top,
-            Arc::new(SpinMutex::new(memory_set)),
+            Arc::new(IRQSpinLock::new(memory_set)),
             entry_point
         ));
+    }
+
+    pub fn set_state(&mut self, target_state: TaskState){
+        self.state = target_state;
+    }
+
+    pub fn get_state(&self) -> TaskState {
+        self.state
     }
         
 }
@@ -207,13 +243,13 @@ impl TaskUserResource {
         leader: Weak<TaskControlBlock>, 
         user_stack_base: usize,
         kernel_stack_top: usize,
-        memory_set: Arc<SpinMutex<MemorySet>>,
+        memory_set: Arc<IRQSpinLock<MemorySet>>,
         entry_point: usize,
     ) -> Self {
 
         log::debug!("new TaskUserResource");
 
-        let user_stack_id_allocator = Arc::new(SpinMutex::new(
+        let user_stack_id_allocator = Arc::new(IRQSpinLock::new(
             RecycleAllocator::new()
         ));
 
@@ -244,8 +280,8 @@ impl TaskUserResource {
             group_leader: leader,
             memory_set, 
             parent: None, 
-            children: Arc::new(SpinMutex::new(Vec::new())), 
-            task_group: Arc::new(SpinMutex::new(Vec::new())), 
+            children: Arc::new(IRQSpinLock::new(Vec::new())), 
+            task_group: Arc::new(IRQSpinLock::new(Vec::new())), 
             user_stack_guard,
             entry_point,
             user_stack_id_allocator,

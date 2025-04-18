@@ -16,11 +16,13 @@ use riscv::register::scause::{Exception, Interrupt, Trap};
 use crate::config::TRAMPOLINE;
 use crate::interupt::InterruptController;
 use crate::syscall::syscall_handler;
-use crate::task::{get_current_user_token, get_current_user_trap_context, get_current_user_trap_context_va};
+use crate::task::{current_task, current_user_token, current_user_trap_context, current_user_trap_context_va};
 use crate::timer::{self, set_next_trigger};
 use crate::global_asm;
 
 use riscv::register::sie;
+
+pub use context::TrapContext;
 
 pub fn enable_timer_interrupt() {
     unsafe { sie::set_stimer();}
@@ -87,6 +89,7 @@ fn set_user_trap_entry() {
 ///
 #[no_mangle]
 pub fn trap_handler() -> ! {
+    log::debug!("trap handler");
     set_kernel_trap_entry();
     // Read the trap cause and trap value from CSR registers.
     let scause = scause::read();
@@ -97,7 +100,7 @@ pub fn trap_handler() -> ! {
     match scause.cause() {
         // Handle system calls.
         Trap::Exception(Exception::UserEnvCall) => {
-            let current_trap_context = get_current_user_trap_context();
+            let current_trap_context = current_user_trap_context();
             // Advance the program counter to skip the ecall instruction.
             current_trap_context.sepc += 4;
 
@@ -115,7 +118,7 @@ pub fn trap_handler() -> ! {
             let result = syscall_handler(current_trap_context.x[17], args) as usize;
 
             // syscall such as exec maybe change current context
-            let new_trap_context = get_current_user_trap_context();
+            let new_trap_context = current_user_trap_context();
             new_trap_context.x[10] = result
         },
 
@@ -124,16 +127,26 @@ pub fn trap_handler() -> ! {
         | Trap::Exception(Exception::StorePageFault) 
         | Trap::Exception(Exception::LoadFault)
         | Trap::Exception(Exception::LoadPageFault) => {
+            let task = current_task();
+            task.with_user_res(|user_res| {
+                log::info!("user res: {:?}", user_res.unwrap());
+            });
+
             log::error!("Page Fault in application, kernel killed it."); 
-            // Run the next application as the current one is terminated.
-            // exit_current_and_run_next();
+            log::error!("{:?}, stval = {:#x}!",
+                scause.cause(),
+                stval);
+            // exit whole task group and run other task
+            log::debug!("task user stack: ");
             unimplemented!()
+            
         },
 
         // Handle illegal instructions.
         Trap::Exception(Exception::IllegalInstruction) => {
             log::error!("Illegal instruction in application, kernel killed it.");
             unimplemented!()
+            // yield_current();
         },
 
         // Handle unknown exceptions.
@@ -195,8 +208,10 @@ pub fn trap_handler() -> ! {
 pub fn trap_return() -> ! {
     InterruptController::global_disable();
     set_user_trap_entry();
-    let user_satp = get_current_user_token();
-    let trap_cx_ptr: usize = get_current_user_trap_context_va().into();
+    let user_satp = current_user_token();
+    let trap_cx_ptr: usize = current_user_trap_context_va().into();
+
+    log::debug!("current user toekn: 0x{:x}, trap_cx_ptr: 0x{:x}", user_satp, trap_cx_ptr);
 
     extern "C" {
         fn __alltraps();
@@ -244,4 +259,3 @@ pub fn trap_from_kernel(_trap_context: &TrapContext){
 }
 
 
-pub use context::TrapContext;

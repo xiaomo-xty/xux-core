@@ -27,14 +27,15 @@ __alltraps:
     
 
     # ======================STEP [1]=================================
-    # |        Save general registers , except tp, sp, and x0       |
+    # |        Save general registers , except sp, and x0       |
     # |_____________________________________________________________|
     # Skip x0 = 0 (x0 is always zero and doesn't need to be saved)
     # Save x1 to x31 (general-purpose registers) to the kernel stack
     sd x1, 1*8(sp)
     # Skip x2 (sp), as it is saved in sscratch
     sd x3, 3*8(sp)
-    # Skip x3 (tp), as it is unnessasary
+    # Skip x4 (tp), as it is unnessasary
+    sd x4, 4*8(sp)
     # Save general-purpose registers x5 to x31
     .set n, 5
     .rept 27

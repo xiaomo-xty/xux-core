@@ -6,7 +6,7 @@
 //! ### Spin-based Locks (Non-blocking)
 //! - [ ] `TicketLock` - Fair spinlock using ticket algorithm  
 //!   ▶ Prevents thread starvation at the cost of slightly higher latency
-//! - [x] [`SpinMutex`] - Basic spinlock implementation  
+//! - [x] [`IRQSpinLock`] - Basic spinlock implementation  
 //!     - [x] Core locking functionality (`lock()`, `try_lock()`)
 //!     - [ ] Backoff strategy optimization  
 //!       ▶ Exponential backoff for high-contention scenarios
@@ -22,8 +22,8 @@
 //! ## Usage Guidelines
 //! ```rust
 //! // Spinlock example (for <100ns critical sections)
-//! use kernel_sync::spin::SpinMutex;
-//! let lock = SpinMutex::new(0);
+//! use kernel_sync::spin::IRQSpinLock;
+//! let lock = IRQSpinLock::new(0);
 //! *lock.lock() = 42;
 //!
 //! // Future blocking mutex example
@@ -39,4 +39,4 @@
 //! - IRQ safety requirements marked with `#[interrupt_safe]`
 
 pub mod mutex;
-mod test;
+

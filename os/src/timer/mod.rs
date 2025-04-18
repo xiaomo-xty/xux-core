@@ -5,7 +5,8 @@ use crate::{config::CLOCK_FREQ, sbi::set_timer};
 mod syscall;
 mod intr_req;
 
-const TICKS_PER_SEC: usize = 100;
+// const TICKS_PER_SEC: usize = 100;
+const TICKS_PER_SEC: usize = 10;
 const MICRO_PER_SEC: usize = 1_000_000;
 
 

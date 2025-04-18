@@ -32,5 +32,5 @@ pub fn interrupt_request_handler() {
     set_next_trigger();
     
     // Notify the scheduler about the timer tick
-    get_current_processor().scheduler.lock().timer_tick();
+    get_current_processor().timer_tick();
 }

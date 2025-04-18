@@ -4,7 +4,7 @@
 
 use lazy_static::lazy_static;
 
-use crate::sync::spin::mutex::SpinMutex;
+use crate::sync::spin::mutex::IRQSpinLock;
 
 // use crate::sync::UPSafeCell;
 
@@ -12,7 +12,7 @@ use crate::sync::spin::mutex::SpinMutex;
 /// These are unsafe C-ABI functions that take 6 arguments and return an isize.
 type SyscallHandler = unsafe extern "C" fn(args: [usize; 6]) -> isize;
 
-type RWLock<T> = SpinMutex<T>;
+type RWLock<T> = IRQSpinLock<T>;
 
 lazy_static! {
 
@@ -23,7 +23,7 @@ lazy_static! {
     /// - Must be properly initialized before use
     /// - Contains 512 entries (0-511) matching standard system call numbers
     #[link_section = ".syscall_table"]
-    pub static ref SYSCALL_TABLE: SpinMutex<[Option<SyscallHandler>; 512]> = 
+    pub static ref SYSCALL_TABLE: IRQSpinLock<[Option<SyscallHandler>; 512]> = 
             RWLock::new([None; 512]);
 }
 
