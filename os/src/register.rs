@@ -22,3 +22,14 @@ impl Tp {
         };
     }
 }
+
+pub struct Sstatus;
+
+impl Sstatus {
+    #[inline]
+    pub fn write(value: usize) {
+        unsafe {
+            core::arch::asm!("csrw sstatus, {0}", in(reg) value);
+        }
+    }
+}

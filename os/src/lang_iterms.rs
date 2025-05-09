@@ -6,7 +6,9 @@
 /// or perform other custom operations when an error occurs.
 
 use core::panic::PanicInfo;
-use crate::{println, sbi::shutdown};
+use alloc::vec::Vec;
+
+use crate::{println, sbi::shutdown, tools::backtrace::trace};
 
 /// Custom panic handler that is triggered when the program encounters a panic.
 ///
@@ -26,6 +28,8 @@ use crate::{println, sbi::shutdown};
 /// - The system is then shut down by calling the `shutdown` function.
 #[panic_handler]
 fn panic(info: &PanicInfo) -> ! {
+
+    
     // Check if panic has a location (file and line number) information
     if let Some(location) = info.location() {
         // If panic occurred in a specific location, print the file, line, and the message
@@ -40,7 +44,20 @@ fn panic(info: &PanicInfo) -> ! {
         println!("Panicked: {}", info.message());
     }
 
+    // 收集栈回溯
+    let backtrace = trace(7);
+
+    // 打印回溯信息
+    println!("Backtrace ({} frames):", backtrace.len());
+    for (i, frame) in backtrace.iter().enumerate() {
+        println!("  #{:02} fp={:#x} ra={:#x}", i, frame.fp, frame.ra);
+    }
+
     // Call shutdown function from the SBI to halt the system
     // The argument `true` indicates that the shutdown should be initiated due to a panic
     shutdown(true)
 }
+
+
+
+

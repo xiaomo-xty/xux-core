@@ -63,6 +63,7 @@ mod config;
 mod loader;
 mod timer;
 mod register;
+mod tools;
 mod test_framework;
 
 extern crate alloc;

@@ -49,19 +49,22 @@ SECTIONS
     sdata = .;
     .data : {
         *(.data .data.*)
-
-         /* 系统调用表（运行时修改） */
-        . = ALIGN(8);
-        __syscall_table_start = .;
-        KEEP(*(.syscall_table))
-        __syscall_table_end = .;
-
         *(sdata .sdata.*)
     }
 
     /* End of data*/
     . = ALIGN(4K);
     edata = .;
+
+    .syscall_table : {
+        __syscall_table_start = .;
+        KEEP(*(.syscall_table))       /* 强制保留该段 */
+        __syscall_table_end = .;
+    }                            /* 明确读写属性 */
+
+
+
+    . = ALIGN(4K);
     sbss_with_stack = .;
     .bss : {
         /* The .bss.stack section is outside 

@@ -22,7 +22,6 @@ pub fn init_frame_allocator() {
         fn ekernel();
     }
 
-    log::debug!("cao");
     FRAME_ALLOCATOR
         .lock()
         .init(PhysAddr::from(ekernel as usize).up_to_ppn(), PhysAddr::from(PHYSTOP).down_to_ppn());

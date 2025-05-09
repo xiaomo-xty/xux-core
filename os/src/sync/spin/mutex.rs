@@ -4,7 +4,7 @@
 //! - [`SpinLock`]: A basic spinlock for thread synchronization
 //! - [`IRQSpinLock`]: An interrupt-disabling spinlock for kernel contexts
 
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use core::{sync::atomic::{AtomicBool, AtomicUsize, Ordering}};
 use lock_api::{GuardSend, RawMutex};
 use crate::{interupt::InterruptController, processor::current_processor_id};
 
@@ -55,6 +55,9 @@ pub struct RawSpinLock {
     #[cfg(debug_assertions)]
     /// Track lock holder for recursion detection (debug only)
     holder_id: AtomicUsize,
+
+    #[cfg(debug_assertions)]
+    holder_pc: AtomicUsize,
 }
 
 impl RawSpinLock {
@@ -66,10 +69,15 @@ impl RawSpinLock {
     ///
     /// This will panic if the current CPU already holds this lock,
     /// indicating a recursive locking attempt that could deadlock.
+    #[inline(always)]
     fn check_dead_lock(&self) {
+
         let holder = self.holder_id.load(Ordering::Relaxed);
         if holder != usize::MAX && holder == current_processor_id().into() {
-            panic!("dead lock occur, holder: {}", holder);
+            panic!("dead lock occur, holder: {}, holder_pc: {}", 
+                holder, 
+                self.holder_pc.load(Ordering::Relaxed),
+            );
         }
     }
 }
@@ -79,6 +87,8 @@ unsafe impl RawMutex for RawSpinLock {
         locked: AtomicBool::new(false),
         #[cfg(debug_assertions)]
         holder_id: Self::NO_HOLDER,
+        #[cfg(debug_assertions)]
+        holder_pc: AtomicUsize::new(0),
     };
     
     type GuardMarker = GuardSend;
@@ -88,19 +98,30 @@ unsafe impl RawMutex for RawSpinLock {
     /// This will busy-wait while the lock is held by another thread.
     /// In debug builds, it also checks for recursive locking attempts.
     fn lock(&self) {
-        log::debug!("accquire lock");
+        log::debug!("accquiring lock");
+
         #[cfg(debug_assertions)]
         self.check_dead_lock();
-
+        
         while !self.try_lock() {
             core::hint::spin_loop()
         }
-
-        #[cfg(debug_assertions)] 
+        
+        #[cfg(debug_assertions)]
         {
+            // use crate::tools::backtrace::trace;
+            
+            // let frames = trace(7);
+
+            // let call_frames = &frames[5];
+
+            // self.holder_pc.store(call_frames.ra, Ordering::Relaxed);
+
             let cpu_id = current_processor_id();
             self.holder_id.store(cpu_id.into(), Ordering::Relaxed);
         }
+
+        log::debug!("accquire lock completed.");
     }
 
     /// Attempt to acquire the lock without spinning
@@ -122,7 +143,7 @@ unsafe impl RawMutex for RawSpinLock {
         {
             self.holder_id.store(usize::MAX, Ordering::Release);
         }
-        log::debug!("release lock");
+        // log::debug!("release lock");
     }
 }
 
@@ -157,6 +178,7 @@ unsafe impl RawMutex for RawIrqSpinlock {
     /// Returns `true` if the lock was acquired, `false` otherwise.
     /// Does not modify interrupt state for failed attempts.
     fn try_lock(&self) -> bool {
+
         self.inner.try_lock()
     }
 

@@ -275,7 +275,7 @@ impl PageTable {
     pub fn map(&mut self, vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) {
 
 
-        log::debug!("PageTable Maping {:?}", vpn);
+        // log::debug!("PageTable Maping {:?}", vpn);
         let pte = self.find_pte_or_create(vpn).unwrap();
         assert!(
             !pte.is_valid(),
@@ -285,12 +285,12 @@ impl PageTable {
             pte.flags()
         );
 
-        log::debug!("PTE before update: {:?}", pte.flags());
+        // log::debug!("PTE before update: {:?}", pte.flags());
 
         pte.update(ppn, flags | PTEFlags::V);
 
 
-        log::debug!("PTE after update: {:?}", pte.flags());
+        // log::debug!("PTE after update: {:?}", pte.flags());
     }
 
     /// Unmaps a virtual page number (VPN).

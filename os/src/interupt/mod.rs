@@ -32,18 +32,15 @@ pub struct InterruptController;
 impl InterruptController {
     #[inline]
     pub fn global_enable() {
-        log::debug!("enable intterupt");
         unsafe { sstatus::set_sie(); }
     }
 
     #[inline]
     pub fn global_disable() {
         unsafe { sstatus::clear_sie(); }
-        log::debug!("disable intterupt");
     }
 
     pub fn intr_disable_nested() {
-        log::debug!("disable interrrupt nested");
 
         let processor = get_current_processor();
 
@@ -51,7 +48,6 @@ impl InterruptController {
         InterruptController::global_disable();
         let old_nest_cnt = processor.increment_nest();
 
-        log::debug!("old_nest_cnt: {}", old_nest_cnt);
 
         if old_nest_cnt == 0 {
             processor.set_saved_interrupt_state(old_intr_state);
@@ -65,7 +61,6 @@ impl InterruptController {
             InterruptController::set_state(processor.get_saved_interrupt_state());
         }
 
-        log::debug!("enable interrrupt nested");
     }
 
     

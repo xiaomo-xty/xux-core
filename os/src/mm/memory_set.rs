@@ -23,6 +23,9 @@ extern "C" {
     fn erodata();
     fn sdata();
     fn edata();
+    fn __syscall_table_start();
+    fn __syscall_table_end();
+
     fn sbss_with_stack();
     fn ebss();
     fn ekernel();
@@ -93,7 +96,7 @@ impl MemorySet {
         end_va: VirtAddr,
         permission: MapPermission,
     ) {
-        log::debug!("insert {:?}~{:?}", start_va, end_va);
+        // log::debug!("insert {:?}~{:?}", start_va, end_va);
         self.push(
             MapArea::new(start_va, end_va, MapType::Framed, permission),
             None,
@@ -171,6 +174,17 @@ impl MemorySet {
                 (edata as usize).into(),
                 MapType::Identical,
                 MapPermission::R,
+            ),
+            None,
+        );
+
+        log::info!("Mapping .syscall_table section with identity mapping...");
+        memory_set.push(
+            MapArea::new(
+                (__syscall_table_start as usize).into(),
+                (__syscall_table_end as usize).into(),
+                MapType::Identical,
+                MapPermission::R | MapPermission::W,
             ),
             None,
         );

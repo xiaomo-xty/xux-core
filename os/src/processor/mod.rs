@@ -138,7 +138,12 @@ impl ProcessorLocal {
     }
 
     pub fn timer_tick(&self) {
+
+        log::debug!("timer tick");
+        
         self.get_scheduler().yield_current();
+
+        log::debug!("timer tick handle finish")
     }
 
     #[inline]
@@ -153,8 +158,15 @@ impl ProcessorLocal {
     }
 
 
-    pub fn get_current_task(&self) -> Arc<TaskControlBlock> {
-        self.current_task.as_ref().unwrap().clone()
+    pub fn get_current_task(&self) -> Option<&Arc<TaskControlBlock>> {
+        match &self.current_task {
+            Some(task) => {
+                Some(task)
+            },
+            None => {
+                None
+            }
+        }
     }
 
     pub fn set_current_task(&mut self, task: Arc<TaskControlBlock> ) {
@@ -179,6 +191,10 @@ impl ProcessorLocal {
 
     pub fn yield_current(&self) {
         self.get_scheduler().yield_current();
+    }
+
+    pub fn exit_current(&self, exit_status: i32) {
+        self.get_scheduler().exit_current(exit_status);
     }
 
     // ========== 中断管理接口 ========== //

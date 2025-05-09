@@ -34,7 +34,7 @@ pub struct RawRwLock(AtomicU32);
 ///     *write_guard += 1;
 /// }
 /// ```
-pub type RwLock<T> = lock_api::RwLock<RawRwLock, T>;
+pub type RWLock<T> = lock_api::RwLock<RawRwLock, T>;
 
 /// A guard that provides shared read access to the data protected by [`RwLock`].
 ///

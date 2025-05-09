@@ -1,10 +1,13 @@
 use buddy_system_allocator::LockedHeap;
+use os_macros::kernel_test;
 use crate::{config::KERNEL_HEAP_SIZE, println};
 
 
 /// I should implement a slab allcator
 /// Request space for buddy dynamiclly
 #[global_allocator]
+
+
 static HEAP_ALLOCATOR: LockedHeap =  LockedHeap::empty();
 
 // static mut HEAP_SPACE: [u8; KERNEL_HEAP_SIZE] = [0; KERNEL_HEAP_SIZE];
@@ -83,4 +86,16 @@ pub fn heap_test() {
     assert!(bss_range.contains(&(v.as_ptr() as usize)));
     drop(v);
     log::info!("==============heap_test passed!=========================");
+}
+
+
+
+#[kernel_test]
+pub fn test_dead_lock_in_interrupt() {
+    use core::arch::asm;
+
+    let gurad = HEAP_ALLOCATOR.lock();
+    let gurad2 = HEAP_ALLOCATOR.lock();
+
+    println!("pass");
 }

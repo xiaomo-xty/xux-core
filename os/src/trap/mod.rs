@@ -9,16 +9,18 @@ mod context;
 
 use core::arch::asm;
 
+use alloc::boxed::Box;
 use riscv::register::utvec::TrapMode;
-use riscv::register::{scause, sscratch, stval, stvec};
+use riscv::register::{scause, sepc, sscratch, sstatus, stval, stvec};
 use riscv::register::scause::{Exception, Interrupt, Trap};
 
 use crate::config::TRAMPOLINE;
 use crate::interupt::InterruptController;
+use crate::register::Sstatus;
 use crate::syscall::syscall_handler;
-use crate::task::{current_task, current_user_token, current_user_trap_context, current_user_trap_context_va};
+use crate::task::{current_task, current_user_token, current_user_trap_context, current_user_trap_context_va, exit_current};
 use crate::timer::{self, set_next_trigger};
-use crate::global_asm;
+use crate::{global_asm, println};
 
 use riscv::register::sie;
 
@@ -127,9 +129,9 @@ pub fn trap_handler() -> ! {
         | Trap::Exception(Exception::StorePageFault) 
         | Trap::Exception(Exception::LoadFault)
         | Trap::Exception(Exception::LoadPageFault) => {
-            let task = current_task();
-            task.with_user_res(|user_res| {
-                log::info!("user res: {:?}", user_res.unwrap());
+            let task = current_task().unwrap();
+            task.lock().with_user_res(|user_res| {
+                log::info!("user res: {:?}", user_res);
             });
 
             log::error!("Page Fault in application, kernel killed it."); 
@@ -138,15 +140,15 @@ pub fn trap_handler() -> ! {
                 stval);
             // exit whole task group and run other task
             log::debug!("task user stack: ");
-            unimplemented!()
+            // unimplemented!()
+            exit_current(-1);
             
         },
 
         // Handle illegal instructions.
         Trap::Exception(Exception::IllegalInstruction) => {
             log::error!("Illegal instruction in application, kernel killed it.");
-            unimplemented!()
-            // yield_current();
+            exit_current(-1);
         },
 
         // Handle unknown exceptions.
@@ -155,8 +157,7 @@ pub fn trap_handler() -> ! {
         },
 
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            set_next_trigger();
-            timer::interrupt_request_handler();
+            timer::intr_req::user_irq_handler();
         },
 
         // Handle unsupported traps.
@@ -168,6 +169,7 @@ pub fn trap_handler() -> ! {
             );
         }
     }
+
     // Return the updated trap context.
     // And then return to trap.S 
     // and continue from __restore 
@@ -206,8 +208,11 @@ pub fn trap_handler() -> ! {
 /// - Requires #[repr(C)] for predictable struct layout matching assembly expectations.
 /// - TRAMPOLINE must be identity-mapped in all address spaces.
 pub fn trap_return() -> ! {
+    log::debug!("trap_return, task {}, state : {}", current_task().unwrap().get_name(), current_task().unwrap().lock().get_state());
+    
     InterruptController::global_disable();
     set_user_trap_entry();
+
     let user_satp = current_user_token();
     let trap_cx_ptr: usize = current_user_trap_context_va().into();
 
@@ -239,23 +244,42 @@ pub fn trap_return() -> ! {
 
 #[no_mangle]
 // Unimplement: traps/interrupts/exceptions
-pub fn trap_from_kernel(_trap_context: &TrapContext){
+pub fn trap_from_kernel(trap_context: &TrapContext){
+    log::debug!("trap from kernel");
+
+    
     let scause = scause::read();
     let stval = stval::read();
+    
+    log::debug!("trap from kernel: scause.cause {:?}, stval {:#x}",
+    scause.cause(), stval);
+    
+    let sepc_ = sepc::read();
+    let sstatus_ = sstatus::read();
 
     match scause.cause() {
         Trap::Interrupt(Interrupt::SupervisorExternal) => {
             unimplemented!()
         },
         Trap::Interrupt(Interrupt::SupervisorTimer) => {
-            timer::interrupt_request_handler();
+            timer::intr_req::kernel_irq_handler();
         },
         _ => {
+
+            println!("{:?}", trap_context);
             panic!("Unsupport trap from kernel: scause.cause {:?}, stval {:#x}",
                 scause.cause(), stval
             );
         }
     }
+
+    // the yield() may have caused some traps to occur,
+    // so restore trap registers for use by kernelvec.S's sepc instruction.
+    sepc::write(sepc_);
+    Sstatus::write(sstatus_.bits());
+
+    log::debug!("finish trap_from_kernel");
+    
 }
 
 

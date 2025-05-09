@@ -50,10 +50,10 @@ impl MapArea {
         map_type: MapType,
         map_perm: MapPermission,
     ) -> Self {
-        log::debug!("New MapArea: start-{:?}~end-{:?}", start_va, end_va);
+        // log::debug!("New MapArea: start-{:?}~end-{:?}", start_va, end_va);
         let start_vpn: VirtPageNum = start_va.down_to_vpn();
         let end_vpn: VirtPageNum = end_va.up_to_vpn();
-        log::debug!("New MapArea: start-{:?}~end-{:?}", start_vpn, end_vpn);
+        // log::debug!("New MapArea: start-{:?}~end-{:?}", start_vpn, end_vpn);
         Self {
             vpn_range: VPNRange::new(start_vpn, end_vpn),
             data_frames: BTreeMap::new(),
@@ -105,7 +105,7 @@ impl MapArea {
     }
 
     pub fn map_one(&mut self, page_table: &mut PageTable, vpn: VirtPageNum) {
-        log::debug!("map one: {:?}", vpn);
+        // log::debug!("map one: {:?}", vpn);
         let ppn: PhysPageNum;
         match self.map_type {
             MapType::Identical => {

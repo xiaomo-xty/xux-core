@@ -3,6 +3,8 @@ OS := $(shell cat ./Cargo.toml | grep -oP 'name = \s*"\K[^"]+')
 TARGET := riscv64gc-unknown-none-elf
 MODE := release
 LOG ?= INFO
+
+LOG_FILE ?= kernel.log
 KERNEL_ELF := target/$(TARGET)/$(MODE)/$(OS)
 KERNEL_BIN := $(KERNEL_ELF).bin
 
@@ -79,6 +81,8 @@ kernel:
 	@echo Platform: $(BOARD)
 	@echo $(LINKER_SCRIPT_TEMPLATE)
 	@echo $(LINKER_SCRIPT)
+	@echo $(MODE)
+	@echo $(LOG)
 	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/$(LINKER_SCRIPT_TEMPLATE) > src/$(LINKER_SCRIPT)
 	@LOG=$(LOG) cargo build $(MODE_ARG)
 	@rm src/$(LINKER_SCRIPT)
@@ -88,16 +92,18 @@ $(KERNEL_BIN): kernel
 
 
 .PHONY: run test clean gdb\
-		kernel build disasm debug
+		kernel build disasm debug \
+		
 run: run-inner
 
 run-inner: build
 ifeq ($(BOARD),qemu)
 	$(QEMU) \
+		-s \
 		-machine virt \
 		-nographic \
 		-bios  $(BOOTLOADER)\
-		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)
+		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA) 2>&1 | tee -a $(LOG_FILE)
 else
 	(which $(KFLASH) || (cd .. && git clone $(KFLASH_SRC) && mv kflash.py tools))
 	@cp $(BOOTLOADER) $(BOOTLOADER).copy
@@ -120,8 +126,8 @@ debug: build
 		tmux -2 attach-session -d
 
 gdb: build
-	$(GDB) --verbose \
-		-ex 'file target/$(TARGET)/debug/os.bin' \
+	$(GDB) \
+		-ex 'file $(KERNEL_ELF_DEBUG)' \
 		-ex 'set arch riscv:rv64' \
 		-ex 'target remote localhost:1234'\
 		-ex 'source ./scripts/debug.gdb'
@@ -129,7 +135,7 @@ gdb: build
 clean:
 	@cd ../user && make clean
 	@cargo clean		
-	@rm src/link_app.S
+	@rm src/link_app.S *.log
 
 
 build-tests:

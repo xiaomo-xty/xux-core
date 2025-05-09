@@ -1,0 +1,9 @@
+Panicked at src/task/syscall.rs:11 internal error: entered unreachable code
+Backtrace (7 frames):
+  #00 fp=0xffffffffbfff6da0 ra=0x802044b0
+  #01 fp=0xffffffffbfff7440 ra=0x80232cb6
+  #02 fp=0xffffffffbfff7470 ra=0x80232d3c
+  #03 fp=0xffffffffbfff74c0 ra=0x802073d4
+  #04 fp=0xffffffffbfff75a0 ra=0x802074be
+  #05 fp=0xffffffffbfff75c0 ra=0x8022d3b2
+  #06 fp=0xffffffffbfff77f0 ra=0x8022171a

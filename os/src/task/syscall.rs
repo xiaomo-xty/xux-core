@@ -1,16 +1,18 @@
 use os_macros::syscall_register;
 
+use crate::task::exit_current;
+
+use super::yield_current;
+
 #[syscall_register(SYSCALL_EXIT)]
-pub fn sys_exit(xstate: i32) -> ! {
-    log::info!(" Application exited with code {}", xstate);
-    // exit_current_and_run_next();
-    unimplemented!();
-    // unreachable!()
+pub fn sys_exit(exit_status: i32) -> ! {
+    log::warn!(" Application exited with code {}", exit_status);
+    exit_current(exit_status);
+    unreachable!()
 }
 
 #[syscall_register(SYSCALL_YIELD)]
 pub fn sys_yield() -> isize {
-    unimplemented!();
-    // suspend_current_and_run_next();
-    // 0
+    yield_current();
+    0
 }

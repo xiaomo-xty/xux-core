@@ -1,4 +1,4 @@
-use crate::processor::get_current_processor;
+use crate::{processor::get_current_processor, task::yield_current};
 use super::set_next_trigger;
 
 /// Handles timer interrupt requests.
@@ -26,11 +26,18 @@ use super::set_next_trigger;
 /// // Typically called from an interrupt handler:
 /// interrupt_request_handler();
 /// ```
-pub fn interrupt_request_handler() {
+pub fn kernel_irq_handler() {
     log::debug!("Handle timer interrupt");
-    // Set up the next timer interrupt
-    set_next_trigger();
-    
     // Notify the scheduler about the timer tick
     get_current_processor().timer_tick();
+    
+    log::debug!("set next time trigger");
+    // Set up the next timer interrupt
+    set_next_trigger();
+}
+
+
+pub fn user_irq_handler() {
+    set_next_trigger();
+    yield_current();
 }

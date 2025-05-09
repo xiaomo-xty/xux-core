@@ -33,7 +33,7 @@ pub const VALID_KERNEL_HIGH_BITS: usize = HIGH_BITS_MASK;
 
 pub const USER_STACK_SIZE: usize = 1 * PAGE_SIZE;      // Size of the user stack (8 KiB)
 pub const GUARD_PAGE_SIZE: usize = 2 * PAGE_SIZE;      // Size of guard page
-pub const KERNEL_STACK_SIZE: usize = 2 * PAGE_SIZE;    // Size of the kernel stack (8 KiB)
+pub const KERNEL_STACK_SIZE: usize = 4 * PAGE_SIZE;    // Size of the kernel stack (8 KiB)
 
 // The half of k210 SRAM
 pub const KERNEL_HEAP_SIZE: usize = 0x30_0000;

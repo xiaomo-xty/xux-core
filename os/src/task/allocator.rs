@@ -24,7 +24,7 @@ impl TaskHandleAllocator {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TaskHandle(TaskID);
 
 

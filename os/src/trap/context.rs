@@ -1,5 +1,6 @@
 //! Implementation of [`TrapContext`]
 
+use alloc::{format, vec::Vec};
 use riscv::register::sstatus::{
     self, Sstatus, SPP
 };
@@ -163,5 +164,40 @@ impl TrapContext {
         ctx.set_sp(sp);
 
         ctx
+    }
+}
+
+
+
+
+use core::fmt;
+
+impl fmt::Debug for TrapContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // 按你的注释分块输出
+        f.debug_struct("TrapContext")
+            // =====================================
+            // User -> Kernel 时保存，Kernel -> User 时恢复
+            // =====================================
+            .field("\nx (registers)", &{
+                // 自定义寄存器输出（避免显示全部32个）
+                let mut regs = self.x.iter().enumerate()
+                    .filter(|(i, _)| *i == 0 || *i == 1 || *i == 2 || *i >= 28)
+                    .map(|(i, v)| format!("x{:02}={:#x}", i, v))
+                    .collect::<Vec<_>>();
+                regs.insert(3, "...".into());
+                regs
+            })
+            .field("\nsstatus", &self.sstatus)
+            .field("\nsepc", &format_args!("{:#x}", self.sepc))
+            
+            // =====================================
+            // Kernel -> User 时保存，User -> Kernel 时恢复
+            // =====================================
+            .field("\nkernel_satp", &format_args!("{:#x}", self.kernel_satp))
+            .field("\nkernel_sp", &format_args!("{:#x}", self.kernel_sp))
+            .field("\nkernel_tp", &format_args!("{:#x}", self.kernel_tp))
+            .field("\ntrap_handler\n\n", &format_args!("{:#x}", self.trap_handler))
+            .finish()
     }
 }

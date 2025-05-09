@@ -33,7 +33,13 @@ use registry::SYSCALL_TABLE;
 /// * It executes arbitrary function pointers from the table
 /// * System call handlers may perform unsafe operations
 pub fn syscall_handler(syscall_id: usize, args: [usize; 6]) -> isize {
-    let syscall_table = SYSCALL_TABLE.lock();
+    log::debug!("syscall handler, syscall_id: {}", syscall_id);
+
+
+    log::debug!("getting syscall_table");
+    let syscall_table = SYSCALL_TABLE.read();
+    log::debug!("getted syscall_table");
+
     unsafe {
         // Look up the handler in the system call table
         let syscall_wrap = match syscall_table.get(syscall_id).and_then(|f| *f) {
@@ -41,7 +47,7 @@ pub fn syscall_handler(syscall_id: usize, args: [usize; 6]) -> isize {
             None => return -(Errno::ENOSYS as isize),
         };
     
-    // Execute the system call handler
+        // Execute the system call handler
 
         drop(syscall_table);
     

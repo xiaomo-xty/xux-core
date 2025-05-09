@@ -1,6 +1,9 @@
 .section .text.entry
 .globl _start
 
+.globl boot_stack_top
+.globl boot_stack_lower_bound
+
 
 
 _start:
