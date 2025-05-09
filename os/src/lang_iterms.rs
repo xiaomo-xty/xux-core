@@ -45,7 +45,7 @@ fn panic(info: &PanicInfo) -> ! {
     }
 
     // 收集栈回溯
-    let backtrace = trace(7);
+    let backtrace = trace(18);
 
     // 打印回溯信息
     println!("Backtrace ({} frames):", backtrace.len());

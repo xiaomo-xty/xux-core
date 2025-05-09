@@ -6,7 +6,7 @@ mod syscall;
 pub mod intr_req;
 
 // const TICKS_PER_SEC: usize = 100;
-const TICKS_PER_SEC: usize = 10;
+const TICKS_PER_SEC: usize = 50;
 const MICRO_PER_SEC: usize = 1_000_000;
 
 
@@ -47,7 +47,8 @@ pub fn get_time() -> usize {
 /// interrupt will occur 10ms after the current time.
 
 pub fn set_next_trigger() {
-    set_timer(get_time() + CLOCK_FREQ / TICKS_PER_SEC);
+    const TICK_TIME: usize = CLOCK_FREQ / TICKS_PER_SEC;
+    set_timer(get_time() + TICK_TIME);
 }
 
 /// Returns the current time **in microseconds (µs)**.

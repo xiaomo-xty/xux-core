@@ -139,11 +139,11 @@ impl ProcessorLocal {
 
     pub fn timer_tick(&self) {
 
-        log::debug!("timer tick");
+        // log::debug!("timer tick");
         
         self.get_scheduler().yield_current();
 
-        log::debug!("timer tick handle finish")
+        // log::debug!("timer tick handle finish")
     }
 
     #[inline]

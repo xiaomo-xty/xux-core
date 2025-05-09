@@ -69,8 +69,7 @@ mod test_framework;
 extern crate alloc;
 mod mm;
 
-#[path = "boards/qemu.rs"]
-mod board;
+mod boards;
 
 use core::arch::global_asm;
 

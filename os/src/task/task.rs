@@ -1,4 +1,4 @@
-use core::{fmt::{self, Display}, ptr, sync::atomic::{AtomicPtr, Ordering}, usize};
+use core::{cell::UnsafeCell, fmt::{self, Display}, ptr, sync::atomic::{AtomicBool, AtomicPtr, Ordering}, usize};
 
 use alloc::{boxed::Box, format, string::String, sync::{Arc, Weak}, vec::Vec};
 use bitflags::bitflags;
@@ -44,6 +44,45 @@ bitflags! {
 }
 
 
+pub struct PendingTaskLockGuard {
+    slot: UnsafeCell<Option<IRQSpinLockGuard<'static, TaskControlBlockInner>>>,
+    occupied: AtomicBool,
+}
+
+
+impl PendingTaskLockGuard {
+    pub const fn new() -> Self {
+        Self { slot: UnsafeCell::new(None), occupied: AtomicBool::new(false) }
+    }
+
+    pub unsafe fn store_lock(&self, guard: IRQSpinLockGuard<'_, TaskControlBlockInner>) {
+        if self.occupied.compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed).is_err() {
+            panic!("PendingTaskLockGuard already occupied");
+        }
+
+        // 将guard的生命周期延长到'static（需确保安全）
+        unsafe { 
+            self.slot.get().write(
+                Some( core::mem::transmute(guard) )
+            );
+        }
+    }
+    
+    /// 取出锁守卫
+    /// 安全要求：必须确保之前已经调用了store_lock
+    pub unsafe fn take_lock(&self) -> IRQSpinLockGuard<'_, TaskControlBlockInner> {
+        if !self.occupied.swap(false, Ordering::Release) {
+            panic!("No lock stored in PendingTaskLockGuard");
+        }
+
+        (*self.slot.get()).take().expect("PendingTaskLockGuard was empty")
+    }
+}
+
+unsafe impl Sync for PendingTaskLockGuard {}
+
+
+
 
 pub struct TaskControlBlock { 
     task_handle: TaskHandle,        // 进程ID
@@ -52,7 +91,7 @@ pub struct TaskControlBlock {
     kernel_stack_guard: KernelStackGuard,
     
     inner: IRQSpinLock<TaskControlBlockInner>,
-    pending_lock: AtomicPtr<()>,
+    lock_guard: PendingTaskLockGuard,
 }
 
 /// Task's Control information used by kernel
@@ -95,7 +134,7 @@ pub struct TaskUserResource {
 impl fmt::Debug for TaskControlBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // 原子指针的可读显示
-        let pending_lock_ptr = self.pending_lock.load(Ordering::Relaxed);
+
         
         f.debug_struct("TaskControlBlock")
             .field("task_handle", &self.task_handle)
@@ -142,24 +181,12 @@ impl TaskControlBlock {
         return self.is_leader;
     }
 
-    pub unsafe fn transfer_lock(&self, guard: IRQSpinLockGuard<'_, TaskControlBlockInner>) {
-        let boxed = Box::new(guard);
-        let ptr = Box::into_raw(boxed) as *mut ();
-
-        // 原子存储指针（Release保证之前的操作对接收方可见）
-        self.pending_lock.store(ptr, Ordering::Release);
+    pub fn store_lock(&self, guard: IRQSpinLockGuard<'_, TaskControlBlockInner>) {
+        unsafe { self.lock_guard.store_lock(guard); }
     }
-
-    /// # Safety
-    /// - 必须在目标执行流中调用且仅调用一次
-    pub unsafe fn take_lock(&self) -> IRQSpinLockGuard<'_, TaskControlBlockInner> {
-        // 获取并清空指针
-        let ptr = self.pending_lock.swap(ptr::null_mut(), Ordering::Acquire);
-        assert!(!ptr.is_null(), "No pending lock");
-
-        // 转换回守卫（恢复生命周期）
-        let guard = *Box::from_raw(ptr as *mut IRQSpinLockGuard<TaskControlBlockInner>);
-        guard
+    
+    pub fn take_lock(&self) -> IRQSpinLockGuard<'_, TaskControlBlockInner> {
+        unsafe { self.lock_guard.take_lock() }
     }
 
     pub fn new_from_elf(elf_data: &[u8], app_name: String, parent_task: Option<Arc<TaskControlBlock>>) -> Arc<Self> {
@@ -180,7 +207,7 @@ impl TaskControlBlock {
                 kernel_stack_guard,
                 is_leader: true,
                 inner: IRQSpinLock::new(inner),
-                pending_lock: AtomicPtr::new(core::ptr::null_mut()),
+                lock_guard: PendingTaskLockGuard::new(),
             }
         );
 

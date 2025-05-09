@@ -217,7 +217,7 @@ impl UserStackGuard {
 
         let bottom = top - USER_STACK_SIZE;
 
-        log::debug!("stack base: {:x}, bottom({:x}) ~ top({:x})",  base, bottom, top);
+        // log::debug!("stack base: {:x}, bottom({:x}) ~ top({:x})",  base, bottom, top);
         let bottom_va = VirtAddr::from(bottom);
         let top_va = VirtAddr::from(top);
         let bottom_vpn: VirtPageNum = bottom_va.into();
@@ -232,7 +232,7 @@ impl UserStackGuard {
         );
 
 
-        log::debug!("bottom_vpn: {:?}, bottom_va: {:?}", bottom_vpn, bottom_va);
+        // log::debug!("bottom_vpn: {:?}, bottom_va: {:?}", bottom_vpn, bottom_va);
 
         let ppn = memory_set_guard
                 .translate(bottom_vpn)

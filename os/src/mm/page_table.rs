@@ -252,7 +252,7 @@ impl PageTable {
     /// # Returns:
     /// A new `PageTable` with a valid root PPN and an empty list of frames.
     pub fn new() -> Self {
-        log::debug!("new page table");
+        // log::debug!("new page table");
         let frame = frame_alloc().unwrap();
         PageTable {
             root_ppn: frame.ppn,

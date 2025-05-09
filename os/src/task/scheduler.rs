@@ -55,7 +55,7 @@ impl Scheduler for FiFoScheduler {
         unsafe { 
             let name = yield_out_task.get_name();
             log::debug!("pass {} 's guard into scheduler loop in schedule", name);
-            yield_out_task.transfer_lock(yiled_task_guard);
+            yield_out_task.store_lock(yiled_task_guard);
 
             __switch(yield_task_context as *mut TaskContext, schedule_loop_task_context);
             
@@ -183,7 +183,7 @@ pub fn schedule_loop() {
 
 
             unsafe {
-                next_task.transfer_lock(next_task_guard);
+                next_task.store_lock(next_task_guard);
                 __switch(scheduler_context as *mut TaskContext, next_task_context);
                 log::debug!("switch back to scheduler loop");
                 
@@ -199,8 +199,8 @@ pub fn schedule_loop() {
                         processor.add_task(next_task);
                     },
                     TaskState::Zombie(exit_code) => {
-                        log::debug!("Zombie task {}, exit code: {}", current_task.get_name(), exit_code);
-                        log::debug!("task arc count: {}", Arc::strong_count(&current_task))
+                        // log::debug!("Zombie task {}, exit code: {}", current_task.get_name(), exit_code);
+                        // log::debug!("task arc count: {}", Arc::strong_count(&current_task))
                     },
                     _ => ()
                     

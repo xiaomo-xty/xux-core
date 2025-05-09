@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 use riscv::register::satp;
 
 use crate::{
-    board::MMIO, 
+    boards::MMIO, 
     config::{PAGE_SIZE, PHYSTOP, TRAMPOLINE}, 
     mm::map_area::{MapArea, MapPermission, MapType}, 
     sync::spin::mutex::IRQSpinLock, 
@@ -64,13 +64,13 @@ pub struct MemorySet {
 
 impl MemorySet {
     pub fn new_bare() -> Self {
-        log::debug!("new bare");
+        // log::debug!("new bare");
         let a = Self {
             page_table: PageTable::new(),
             areas: Vec::new(),
             user_info: None,
         };
-        log::debug!("new bare end");
+        // log::debug!("new bare end");
         a
     }
 

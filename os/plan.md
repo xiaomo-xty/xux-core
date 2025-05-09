@@ -3,3 +3,6 @@
 - task auto free
 
 - ready queue add in yield or in schedule_loop?
+
+
+now main problem is heapallocator's dead lock and print preemt zhan yi qi

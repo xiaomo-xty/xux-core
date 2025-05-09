@@ -43,6 +43,12 @@ ifeq ($(MODE), release)
 	MODE_ARG := --release
 endif
 
+ifeq ($(BOARD), qemu)
+	FEATURES := --features board_qemu
+else ifeq ($(BOARD), k210)
+	FEATURES := --features board_k210
+endif
+
 LINKER_SCRIPT_TEMPLATE = ../scripts/template.linker.ld
 LINKER_SCRIPT = $(subst template.,,$(LINKER_SCRIPT_TEMPLATE))
 
@@ -84,7 +90,7 @@ kernel:
 	@echo $(MODE)
 	@echo $(LOG)
 	@sed 's/#BASE_ADDRESS/$(KERNEL_ENTRY_PA)/' src/$(LINKER_SCRIPT_TEMPLATE) > src/$(LINKER_SCRIPT)
-	@LOG=$(LOG) cargo build $(MODE_ARG)
+	@LOG=$(LOG) cargo build $(MODE_ARG) $(FEATURES)
 	@rm src/$(LINKER_SCRIPT)
 
 $(KERNEL_BIN): kernel

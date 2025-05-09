@@ -27,13 +27,15 @@ use super::set_next_trigger;
 /// interrupt_request_handler();
 /// ```
 pub fn kernel_irq_handler() {
+    log::debug!("set next time trigger");
+    // Set up the next timer interrupt
+    set_next_trigger();
+
+    
     log::debug!("Handle timer interrupt");
     // Notify the scheduler about the timer tick
     get_current_processor().timer_tick();
     
-    log::debug!("set next time trigger");
-    // Set up the next timer interrupt
-    set_next_trigger();
 }
 
 

@@ -15,7 +15,7 @@
 /// If `CLOCK_FREQ` is 1,000,000 (1 MHz), it means that the system clock increments
 /// every second by 1,000,000 cycles, which serves as the base for time calculations
 /// and interrupt triggers for scheduling and task management.
-pub const CLOCK_FREQ: usize = 12500000;
+pub const CLOCK_FREQ: usize = 12_500_000;
 
 
 /// [start, size]

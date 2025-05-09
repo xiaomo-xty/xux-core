@@ -53,9 +53,9 @@ pub fn current_task() -> Option<&'static Arc<TaskControlBlock>> {
 }
 
 pub fn current_user_token() -> usize {
-    log::debug!("get current user token");
+    // log::debug!("get current user token");
     current_task().unwrap().lock().with_user_res(|user_res| {
-        log::debug!("get user memory set lock");
+        // log::debug!("get user memory set lock");
         user_res.memory_set.lock().token()
     })
     

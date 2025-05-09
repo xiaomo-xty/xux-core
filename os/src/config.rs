@@ -76,14 +76,14 @@ pub const TRAP_CONTEXT_START: usize = PHYSTOP;
 
 
 
-/*
+/*    pub use k210;
 #[cfg(feature = "board_k210")]
 pub const CLOCK_FREQ: usize = 403000000 / 62;
 
 #[cfg(feature = "board_qemu")]
 pub const CLOCK_FREQ: usize = 12500000;
 */
-pub use crate::board::CLOCK_FREQ;
+pub use crate::boards::CLOCK_FREQ;
 
 
 
