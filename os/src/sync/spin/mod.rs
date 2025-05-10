@@ -39,4 +39,5 @@
 //! - IRQ safety requirements marked with `#[interrupt_safe]`
 
 pub mod mutex;
+pub mod ticket;
 

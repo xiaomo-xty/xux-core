@@ -3,9 +3,6 @@
 //! This module provides isolation and synchronization primitives for SMP (Symmetric Multi-Processing)
 //! systems, with support for per-Processor task management and interrupt control.
 
-use core::arch::asm;
-use core::cell::UnsafeCell;
-use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -15,10 +12,10 @@ use lazy_static::lazy_static;
 use alloc::vec::Vec;
 
 
-use crate::register::{self, Tp};
+use crate::register::Tp;
 use crate::task::{TaskContext, TaskControlBlock};
-use crate::{interupt::InterruptState, sync::spin::mutex::IRQSpinLock};
-use crate::task::scheduler::{FiFoScheduler, Scheduler};
+use crate::{interupt::InterruptState, sync::spin::mutex::Mutex};
+use crate::task::scheduler::Scheduler;
 
 /// A unique identifier for a Processor core (hart) in the system.
 ///
@@ -65,9 +62,9 @@ fn current_processor_local() -> &'static mut ProcessorLocal {
 
 lazy_static! {
     /// Per-CPU shared data (protected by IRQSpinLock)
-    static ref PROCESSORS_SHARED: Vec<IRQSpinLock<ProcessorShared>> = {
+    static ref PROCESSORS_SHARED: Vec<Mutex<ProcessorShared>> = {
         log::info!("Initializing {} processors (shared)", CPU_NUM);
-        (0..CPU_NUM).map(|_| IRQSpinLock::new(ProcessorShared::new())).collect()
+        (0..CPU_NUM).map(|_| Mutex::new(ProcessorShared::new())).collect()
     };
 }
 
@@ -76,7 +73,7 @@ lazy_static! {
 
 /// Safe access to current CPU's shared data
 #[inline]
-fn current_processor_shared() -> &'static IRQSpinLock<ProcessorShared> {
+fn current_processor_shared() -> &'static Mutex<ProcessorShared> {
     let id = current_processor_id().0;
     &PROCESSORS_SHARED[id]  // 或 get_unchecked
 }
@@ -235,7 +232,7 @@ pub fn current_processor_id() -> ProcessorId {
 /// Caller must ensure:
 /// - No other references to this Processor exist
 /// - The ID is valid (0 ≤ id < CPU_NUM)
-pub fn get_processor_by_id(id: ProcessorId) -> &'static IRQSpinLock<ProcessorShared> {
+pub fn get_processor_by_id(id: ProcessorId) -> &'static Mutex<ProcessorShared> {
     let id: usize = id.into();
     log::debug!("return processor[{}]", id);
     &PROCESSORS_SHARED[id]

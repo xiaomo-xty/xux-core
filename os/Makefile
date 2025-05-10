@@ -128,7 +128,7 @@ endif
 debug: build
 	@tmux new-session -d \
 		"$(QEMU) -machine virt -nographic -bios $(BOOTLOADER) -device loader,file=$(KERNEL_BIN_DEBUG),addr=$(KERNEL_ENTRY_PA) -s -S" && \
-		tmux split-window -h "$(GDB) -ex 'file $(KERNEL_ELF_DEBUG)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234' -ex 'source ./scripts/debug.gdb'" && \
+		tmux split-window -h -p 90 "$(GDB) -ex 'file $(KERNEL_ELF_DEBUG)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234' -ex 'source ./scripts/debug.gdb'" && \
 		tmux -2 attach-session -d
 
 gdb: build

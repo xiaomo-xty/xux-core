@@ -36,7 +36,7 @@ pub type SpinLockGuard<'a, T> = lock_api::MutexGuard<'a, RawSpinLock, T>;
 /// # Safety
 /// - Must not be held across sleep operations
 /// - Interrupts remain disabled while the lock is held
-pub type IRQSpinLock<T> = lock_api::Mutex<RawIrqSpinlock, T>;
+pub type Mutex<T> = lock_api::Mutex<RawIrqSpinlock, T>;
 
 /// A guard that provides mutable access to the data protected by [`IRQSpinLock`]
 ///
@@ -98,7 +98,7 @@ unsafe impl RawMutex for RawSpinLock {
     /// This will busy-wait while the lock is held by another thread.
     /// In debug builds, it also checks for recursive locking attempts.
     fn lock(&self) {
-        // log::debug!("accquiring lock");
+        log::debug!("accquiring lock");
 
         #[cfg(debug_assertions)]
         self.check_dead_lock();
@@ -121,7 +121,7 @@ unsafe impl RawMutex for RawSpinLock {
             self.holder_id.store(cpu_id.into(), Ordering::Relaxed);
         }
 
-        // log::debug!("accquire lock completed.");
+        log::debug!("accquire lock completed.");
     }
 
     /// Attempt to acquire the lock without spinning

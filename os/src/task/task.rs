@@ -4,7 +4,7 @@ use alloc::{boxed::Box, format, string::String, sync::{Arc, Weak}, vec::Vec};
 use bitflags::bitflags;
 
 
-use crate::{mm::{address::{PhysPageNum, VirtPageNum}, memory_set::MemorySet, KERNEL_SPACE}, println, processor::get_current_processor, sync::spin::mutex::{IRQSpinLock, IRQSpinLockGuard}, trap::{trap_handler, TrapContext}};
+use crate::{mm::{address::{PhysPageNum, VirtPageNum}, memory_set::MemorySet, KERNEL_SPACE}, println, processor::get_current_processor, sync::spin::mutex::{Mutex, IRQSpinLockGuard}, trap::{trap_handler, TrapContext}};
 
 use super::{allocator::{KernelStackALlocator, KernelStackGuard, RecycleAllocator, TaskHandle, TaskHandleAllocator, TaskID, TrapContextPageAllocator, TrapContextPageGuard, UserStackAlloctor, UserStackGuard}, signal::Signal, yield_current, TaskContext};
 
@@ -90,7 +90,7 @@ pub struct TaskControlBlock {
     is_leader: bool,
     kernel_stack_guard: KernelStackGuard,
     
-    inner: IRQSpinLock<TaskControlBlockInner>,
+    inner: Mutex<TaskControlBlockInner>,
     lock_guard: PendingTaskLockGuard,
 }
 
@@ -117,14 +117,14 @@ pub struct TaskUserResource {
     // pub fs: Arc<FileSystem>,           // 文件系统上下文
     // pub files: Arc<Mutex<FileTable>>,  // 文件描述符表
     // pub signal: Arc<SignalHandler>,    // 信号处理
-    pub memory_set: Arc<IRQSpinLock<MemorySet>>, // 内存管理（用户空间）
+    pub memory_set: Arc<Mutex<MemorySet>>, // 内存管理（用户空间）
 
 
 
-    pub children: Arc<IRQSpinLock<Vec<Arc<TaskControlBlock>>>>,   // the leader of child task group
-    pub task_group: Arc<IRQSpinLock<Vec<Arc<TaskControlBlock>>>>, // task_group
+    pub children: Arc<Mutex<Vec<Arc<TaskControlBlock>>>>,   // the leader of child task group
+    pub task_group: Arc<Mutex<Vec<Arc<TaskControlBlock>>>>, // task_group
 
-    user_stack_id_allocator: Arc<IRQSpinLock<RecycleAllocator>>,
+    user_stack_id_allocator: Arc<Mutex<RecycleAllocator>>,
     pub user_stack_guard: UserStackGuard,
     pub entry_point: usize,
     pub trap_context_guard: TrapContextPageGuard,
@@ -206,7 +206,7 @@ impl TaskControlBlock {
                 name: app_name,
                 kernel_stack_guard,
                 is_leader: true,
-                inner: IRQSpinLock::new(inner),
+                inner: Mutex::new(inner),
                 lock_guard: PendingTaskLockGuard::new(),
             }
         );
@@ -356,9 +356,9 @@ impl TaskUserResource {
         let (memory_set, user_stack_base, entry_point) = 
         MemorySet::from_elf(elf_data);
 
-        let memory_set = Arc::new(IRQSpinLock::new(memory_set));
+        let memory_set = Arc::new(Mutex::new(memory_set));
 
-        let user_stack_id_allocator = Arc::new(IRQSpinLock::new(
+        let user_stack_id_allocator = Arc::new(Mutex::new(
             RecycleAllocator::new()
         ));
 
@@ -382,7 +382,7 @@ impl TaskUserResource {
         trap_context_guard.update(trap_context);
 
 
-        let task_group = Arc::new(IRQSpinLock::new(Vec::new()));
+        let task_group = Arc::new(Mutex::new(Vec::new()));
 
         let (parent_group_id, parent) = match parent {
             Some(parent) => {
@@ -399,7 +399,7 @@ impl TaskUserResource {
             group_leader,
             memory_set, 
             parent, 
-            children: Arc::new(IRQSpinLock::new(Vec::new())), 
+            children: Arc::new(Mutex::new(Vec::new())), 
             task_group, 
             user_stack_guard,
             entry_point,

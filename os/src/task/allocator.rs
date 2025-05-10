@@ -3,7 +3,7 @@ use core::sync::atomic::{ AtomicUsize, Ordering};
 use alloc::{sync::Arc, vec::Vec};
 use lazy_static::lazy_static;
 
-use crate::{config::{KERNEL_STACK_BASE, KERNEL_STACK_SIZE, PAGE_SIZE, TRAP_CONTEXT_START, USER_STACK_SIZE}, mm::{address::{PhysPageNum, VirtAddr, VirtPageNum}, map_area::MapPermission, memory_set::MemorySet, KERNEL_SPACE}, sync::spin::mutex::IRQSpinLock, trap::TrapContext};
+use crate::{config::{KERNEL_STACK_BASE, KERNEL_STACK_SIZE, PAGE_SIZE, TRAP_CONTEXT_START, USER_STACK_SIZE}, mm::{address::{PhysPageNum, VirtAddr, VirtPageNum}, map_area::MapPermission, memory_set::MemorySet, KERNEL_SPACE}, sync::spin::mutex::Mutex, trap::TrapContext};
 
 
 
@@ -121,7 +121,7 @@ impl Drop for KernelStackGuard {
 pub struct TrapContextPageAllocator;
 
 impl TrapContextPageAllocator {
-    pub fn alloc(tid: TaskID, memory_set: Arc<IRQSpinLock<MemorySet>>) -> TrapContextPageGuard{
+    pub fn alloc(tid: TaskID, memory_set: Arc<Mutex<MemorySet>>) -> TrapContextPageGuard{
         TrapContextPageGuard::new(tid, memory_set)
     }
 }
@@ -130,7 +130,7 @@ pub struct TrapContextPageGuard {
     tid: TaskID,
     vpn: VirtPageNum,
     ppn: PhysPageNum,
-    memory_set: Arc<IRQSpinLock<MemorySet>>,
+    memory_set: Arc<Mutex<MemorySet>>,
 }
 
 impl TrapContextPageGuard {
@@ -158,7 +158,7 @@ impl TrapContextPageGuard {
         self.vpn
     }
 
-    fn new(tid: TaskID, memory_set: Arc<IRQSpinLock<MemorySet>>) -> Self {
+    fn new(tid: TaskID, memory_set: Arc<Mutex<MemorySet>>) -> Self {
         let bottom = Self::trap_context_bottom(tid);
         let top = bottom + PAGE_SIZE;
 
@@ -197,7 +197,7 @@ impl Drop for TrapContextPageGuard {
 pub struct UserStackAlloctor;
 
 impl UserStackAlloctor {
-    pub fn alloc(memory_set: Arc<IRQSpinLock<MemorySet>>, base: usize, id: usize) -> UserStackGuard{
+    pub fn alloc(memory_set: Arc<Mutex<MemorySet>>, base: usize, id: usize) -> UserStackGuard{
         UserStackGuard::new(memory_set, base, id)
     }
 }
@@ -208,11 +208,11 @@ pub struct UserStackGuard {
     ppn: PhysPageNum,
     size: usize,
     user_stack_id: usize,
-    memory_set: Arc<IRQSpinLock<MemorySet>>,
+    memory_set: Arc<Mutex<MemorySet>>,
 }
 
 impl UserStackGuard {
-    pub fn new(memory_set: Arc<IRQSpinLock<MemorySet>>, base: usize, id: usize) ->  Self{
+    pub fn new(memory_set: Arc<Mutex<MemorySet>>, base: usize, id: usize) ->  Self{
         let top = Self::gen_top(base, id);
 
         let bottom = top - USER_STACK_SIZE;
@@ -272,14 +272,14 @@ impl Drop for UserStackGuard {
 
 pub struct RecycleAllocator {
     current: AtomicUsize,
-    recycled: IRQSpinLock<Vec<usize>>,
+    recycled: Mutex<Vec<usize>>,
 }
 
 impl RecycleAllocator {
     pub fn new() -> Self {
         RecycleAllocator {
             current: AtomicUsize::new(0),
-            recycled: IRQSpinLock::new(Vec::new()),
+            recycled: Mutex::new(Vec::new()),
         }
     }
     pub fn alloc(&self) -> usize {

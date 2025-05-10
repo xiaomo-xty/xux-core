@@ -5,4 +5,7 @@
 - ready queue add in yield or in schedule_loop?
 
 
-now main problem is heapallocator's dead lock and print preemt zhan yi qi
+- current main problem is heapallocator's dead lock and print preemt zhan yi qi
+
+
+- Why spin lock debug field result atmadd.d handing?

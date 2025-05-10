@@ -1,6 +1,6 @@
 use alloc::{fmt, format, vec::Vec};
 use lazy_static::lazy_static;
-use crate::{config::PHYSTOP, mm::address::PhysAddr, println, sync::spin::mutex::IRQSpinLock};
+use crate::{config::PHYSTOP, mm::address::PhysAddr, println, sync::spin::mutex::Mutex};
 
 use super::address::PhysPageNum;
 
@@ -8,10 +8,10 @@ type FrameAllocatorImpl = StackFrameAllocator;
 
 
 lazy_static! {
-    pub static ref FRAME_ALLOCATOR: IRQSpinLock<FrameAllocatorImpl> =
+    pub static ref FRAME_ALLOCATOR: Mutex<FrameAllocatorImpl> =
         { 
             log::info!("Initialize FRAME_ALLOCATOR");
-            IRQSpinLock::new(FrameAllocatorImpl::new())
+            Mutex::new(FrameAllocatorImpl::new())
         };
 }
 

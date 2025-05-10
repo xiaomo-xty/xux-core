@@ -9,7 +9,7 @@ use crate::{
     boards::MMIO, 
     config::{PAGE_SIZE, PHYSTOP, TRAMPOLINE}, 
     mm::map_area::{MapArea, MapPermission, MapType}, 
-    sync::spin::mutex::IRQSpinLock, 
+    sync::spin::mutex::Mutex, 
 };
 
 use super::{
@@ -33,9 +33,9 @@ extern "C" {
 }
 
 lazy_static! {
-    pub static ref KERNEL_SPACE: Arc< IRQSpinLock<MemorySet> > =
+    pub static ref KERNEL_SPACE: Arc< Mutex<MemorySet> > =
         Arc::new(
-            IRQSpinLock::new(
+            Mutex::new(
                 MemorySet::new_kernel()
             )
         );

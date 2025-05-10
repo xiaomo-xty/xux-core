@@ -6,7 +6,6 @@
 /// or perform other custom operations when an error occurs.
 
 use core::panic::PanicInfo;
-use alloc::vec::Vec;
 
 use crate::{println, sbi::shutdown, tools::backtrace::trace};
 
