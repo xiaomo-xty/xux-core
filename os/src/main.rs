@@ -74,6 +74,7 @@ mod boards;
 use core::arch::global_asm;
 
 use processor::init_processor;
+use sync::spin::{mutex::{IRQSpinLock, IRQSpinLockGuard}, ticket::IRQTicketMutex};
 use task::scheduler::schedule_loop;
 
 // os entry
@@ -123,6 +124,8 @@ pub fn rust_main(hart_id: usize) -> ! {
     timer::set_next_trigger();
     
     log::info!("test successed!Welcom ot xux-os!");
+
+
     schedule_loop();
     unreachable!();
     

@@ -94,13 +94,13 @@ pub fn handle_alloc_error(layout: core::alloc::Layout) -> !{
     panic!("Heap allocation error, layout = {:?}", layout);
 }
 
-
+#[kernel_test]
 pub fn heap_test() {
     log::info!("==========heap test start================");
     use alloc::boxed::Box;
     use alloc::vec::Vec;
     extern "C" {
-        fn sbss();
+        fn sbss();  
         fn ebss();
     }
     let bss_range = sbss as usize..ebss as usize;

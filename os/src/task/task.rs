@@ -4,9 +4,11 @@ use alloc::{boxed::Box, format, string::String, sync::{Arc, Weak}, vec::Vec};
 use bitflags::bitflags;
 
 
-use crate::{mm::{address::{PhysPageNum, VirtPageNum}, memory_set::MemorySet, KERNEL_SPACE}, println, processor::get_current_processor, sync::spin::mutex::{Mutex, IRQSpinLockGuard}, trap::{trap_handler, TrapContext}};
+use crate::{mm::{address::{PhysPageNum, VirtPageNum}, memory_set::MemorySet, KERNEL_SPACE}, println, processor::get_current_processor, sync::spin::mutex::{IRQSpinLock,IRQSpinLockGuard}, trap::{trap_handler, TrapContext}};
 
 use super::{allocator::{KernelStackALlocator, KernelStackGuard, RecycleAllocator, TaskHandle, TaskHandleAllocator, TaskID, TrapContextPageAllocator, TrapContextPageGuard, UserStackAlloctor, UserStackGuard}, signal::Signal, yield_current, TaskContext};
+
+type Mutex<T> = IRQSpinLock<T>;
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 pub enum TaskState {

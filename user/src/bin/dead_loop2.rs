@@ -11,7 +11,7 @@ fn main() -> i32{
     loop {
         x = x + 1;
         if x % 140 == 0 {
-            // println!("dead loop 2: x = {}", x)
+            println!("dead loop 2: x = {}", x)
         }
     }
     0

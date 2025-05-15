@@ -25,22 +25,22 @@ pub struct RawTicketMutex {
     // holder_id: AtomicUsize,       // Debug: Track lock holder CPU ID
 }
 
-impl RawTicketMutex {
-    #[cfg(debug_assertions)]
-    const NO_HOLDER: usize = usize::MAX;
+// impl RawTicketMutex {
+//     #[cfg(debug_assertions)]
+//     const NO_HOLDER: usize = usize::MAX;
 
-    /// Check for recursive locking in debug mode
-    #[inline]
-    fn check_deadlock(&self) {
-        // #[cfg(debug_assertions)]
-        // {
-        //     let holder = self.holder_id.load(Ordering::Relaxed);
-        //     if holder != Self::NO_HOLDER && holder == current_processor_id().into() {
-        //         panic!("Recursive locking detected on CPU {}", holder);
-        //     }
-        // }
-    }
-}
+//     /// Check for recursive locking in debug mode
+//     // #[inline]
+//     fn check_deadlock(&self) {
+//         #[cfg(debug_assertions)]
+//         {
+//             let holder = self.holder_id.load(Ordering::Acquire);
+//             if holder != Self::NO_HOLDER && holder == current_processor_id().into() {
+//                 panic!("Recursive locking detected on CPU {}", holder);
+//             }
+//         }
+//     }
+// }
 
 unsafe impl RawMutex for RawTicketMutex {
     const INIT: RawTicketMutex = RawTicketMutex {
@@ -54,38 +54,43 @@ unsafe impl RawMutex for RawTicketMutex {
 
     fn lock(&self) {
         log::debug!("ticket lock");
-        #[cfg(debug_assertions)]
-        self.check_deadlock();
+        // #[cfg(debug_assertions)]
+        // self.check_deadlock();
 
         log::debug!("check_deadlock finish");
 
         // 1. Get a ticket (FIFO guarantee)
-        let my_ticket = self.next_ticket.fetch_add(1, Ordering::Relaxed);
+        let my_ticket = self.next_ticket.fetch_add(1, Ordering::Acquire);
+        log::debug!("get ticket: {}", my_ticket);
 
         log::debug!("prepare loop");
 
         // 2. Spin until it's our turn
         while self.now_serving.load(Ordering::Acquire) != my_ticket {
+            #[cfg(debug_assertions)]
+            log::debug!("lock loop");
             core::hint::spin_loop();
         }
 
-        log::debug!("store holder_id");
-
+        
         // #[cfg(debug_assertions)]
-        // self.holder_id.store(current_processor_id().into(), Ordering::Relaxed);
+        // {
+        //     log::debug!("store holder_id");
+        //     self.holder_id.store(current_processor_id().into(), Ordering::Release);
+        // }
 
         log::debug!("ticket lock completed");
     }
 
     fn try_lock(&self) -> bool {
-        #[cfg(debug_assertions)]
-        self.check_deadlock();
+        // #[cfg(debug_assertions)]
+        // self.check_deadlock();
 
         let next = self.next_ticket.load(Ordering::Relaxed);
         if self.now_serving.load(Ordering::Acquire) == next {
             self.next_ticket.store(next + 1, Ordering::Relaxed);
             // #[cfg(debug_assertions)]
-            // self.holder_id.store(current_processor_id().into(), Ordering::Relaxed);
+            // self.holder_id.store(current_processor_id().into(), Ordering::Release);
             true
         } else {
             false
@@ -94,8 +99,8 @@ unsafe impl RawMutex for RawTicketMutex {
 
     unsafe fn unlock(&self) {
         log::debug!("ticket lock unlock");
-        #[cfg(debug_assertions)]
-        // self.holder_id.store(Self::NO_HOLDER, Ordering::Relaxed);
+        // #[cfg(debug_assertions)]
+        // self.holder_id.store(Self::NO_HOLDER, Ordering::SeqCst);
 
         // Advance to next ticket
         self.now_serving.fetch_add(1, Ordering::Release);

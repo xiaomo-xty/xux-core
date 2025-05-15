@@ -1,10 +1,9 @@
 use core::{panic, sync::atomic::{AtomicBool, Ordering}};
 
 use alloc::{collections::vec_deque::VecDeque, sync::Arc};
-use lock_api::MutexGuard;
 
 use crate::{
-    interupt::{InterruptController, InterruptState}, processor::{self, current_processor_id, get_current_processor}, sync::spin::mutex::{self, Mutex, IRQSpinLockGuard}, task::switch::__switch, trap::trap_return
+    interupt::{InterruptController, InterruptState}, processor::{self, current_processor_id, get_current_processor}, sync::spin::mutex::{IRQSpinLock, IRQSpinLockGuard}, task::switch::__switch, trap::trap_return
 };
 
 use super::{
@@ -21,7 +20,7 @@ pub trait Scheduler: Send + Sync {
 }
 
 pub struct FiFoScheduler {
-    ready_queue: Mutex<VecDeque<Arc<TaskControlBlock>>>,
+    ready_queue: IRQSpinLock<VecDeque<Arc<TaskControlBlock>>>,
     
     // blocked_tasks: IRQSpinLock<Vec<Weak<TaskControlBlock>>>,
     time_interval: u64,
@@ -112,7 +111,7 @@ impl Scheduler for FiFoScheduler {
 impl FiFoScheduler {
     pub fn new(time_interval: u64) -> Self {
         Self {
-            ready_queue: Mutex::new(VecDeque::new()),
+            ready_queue: IRQSpinLock::new(VecDeque::new()),
             // blocked_tasks: IRQSpinLock::new(Vec::new()),
             time_interval,
             is_running: AtomicBool::new(false),

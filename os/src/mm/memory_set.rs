@@ -9,7 +9,7 @@ use crate::{
     boards::MMIO, 
     config::{PAGE_SIZE, PHYSTOP, TRAMPOLINE}, 
     mm::map_area::{MapArea, MapPermission, MapType}, 
-    sync::spin::mutex::Mutex, 
+    sync::spin::mutex::IRQSpinLock, 
 };
 
 use super::{
@@ -31,6 +31,8 @@ extern "C" {
     fn ekernel();
     fn strampoline();
 }
+
+type Mutex<T> = IRQSpinLock<T>;
 
 lazy_static! {
     pub static ref KERNEL_SPACE: Arc< Mutex<MemorySet> > =
@@ -56,9 +58,9 @@ struct UserMemorySetInfo {
 }
 
 
-pub struct MemorySet {
-    page_table: PageTable,
-    areas: Vec<MapArea>,
+    pub struct MemorySet {
+        page_table: PageTable,
+        areas: Vec<MapArea>,
     user_info: Option<UserMemorySetInfo>,
 }
 

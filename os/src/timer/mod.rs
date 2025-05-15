@@ -48,7 +48,7 @@ pub fn get_time() -> usize {
 
 pub fn set_next_trigger() {
     const TICK_TIME: usize = CLOCK_FREQ / TICKS_PER_SEC;
-    set_timer(get_time() + TICK_TIME);
+    set_timer(get_time() + TICK_TIME/5);
 }
 
 /// Returns the current time **in microseconds (µs)**.

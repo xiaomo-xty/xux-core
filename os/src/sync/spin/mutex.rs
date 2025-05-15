@@ -36,7 +36,7 @@ pub type SpinLockGuard<'a, T> = lock_api::MutexGuard<'a, RawSpinLock, T>;
 /// # Safety
 /// - Must not be held across sleep operations
 /// - Interrupts remain disabled while the lock is held
-pub type Mutex<T> = lock_api::Mutex<RawIrqSpinlock, T>;
+pub type IRQSpinLock<T> = lock_api::Mutex<RawIrqSpinlock, T>;
 
 /// A guard that provides mutable access to the data protected by [`IRQSpinLock`]
 ///
