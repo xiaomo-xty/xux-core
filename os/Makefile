@@ -4,6 +4,9 @@ TARGET := riscv64gc-unknown-none-elf
 MODE := release
 LOG ?= INFO
 
+FS_IMG := ../user/target/$(TARGET)/release/fs.img
+# FS_IMG := ../easy-fs-fuse/fs.img
+
 LOG_FILE ?= kernel.log
 KERNEL_ELF := target/$(TARGET)/$(MODE)/$(OS)
 KERNEL_BIN := $(KERNEL_ELF).bin
@@ -97,19 +100,23 @@ $(KERNEL_BIN): kernel
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
 
 
-.PHONY: run test clean gdb\
+.PHONY: run test clean gdb packfs\
 		kernel build disasm debug \
 		
 run: run-inner
 
-run-inner: build
+run-inner: build packfs
 ifeq ($(BOARD),qemu)
 	$(QEMU) \
 		-s \
 		-machine virt \
 		-nographic \
 		-bios  $(BOOTLOADER)\
-		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA) 2>&1 | tee -a $(LOG_FILE)
+		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA)\
+		-drive file=$(FS_IMG),if=none,format=raw,id=x0 \
+        -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 \
+		
+		2>&1 | tee -a $(LOG_FILE)
 else
 	(which $(KFLASH) || (cd .. && git clone $(KFLASH_SRC) && mv kflash.py tools))
 	@cp $(BOOTLOADER) $(BOOTLOADER).copy
@@ -141,7 +148,7 @@ gdb: build
 clean:
 	@cd ../user && make clean
 	@cargo clean		
-	@rm src/link_app.S *.log
+	@rm *.log
 
 
 build-tests:
@@ -172,3 +179,6 @@ disasm-vim: kernel
 	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) > $(DISASM_TMP)
 	@nvim $(DISASM_TMP)
 	@rm $(DISASM_TMP)
+
+packfs:
+	cd ../easy-fs-fuse && cargo run -- -s ../user/src/bin -t ../user/target/riscv64gc-unknown-none-elf/release/

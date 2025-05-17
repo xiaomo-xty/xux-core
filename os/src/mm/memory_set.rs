@@ -43,6 +43,10 @@ lazy_static! {
         );
 }
 
+pub fn kernel_token() -> usize {
+    KERNEL_SPACE.lock().token()
+}
+
 struct UserMemorySetInfo {
     stack_range: VPNRange,
     // stack: Arc<MapArea>,

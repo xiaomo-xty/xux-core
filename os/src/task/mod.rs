@@ -10,7 +10,7 @@ use alloc::{boxed::Box, string::{String, ToString}, sync::Arc};
 pub use context::TaskContext;
 use scheduler::FiFoScheduler;
 pub use task::TaskControlBlock;
-use crate::{loader::{get_app_data, get_num_app}, mm::address::VirtAddr, processor::get_current_processor, trap::TrapContext};
+use crate::{fs::{open_file, OpenFlags}, mm::address::VirtAddr, processor::get_current_processor, trap::TrapContext};
 
 // use crate::sync::UPSafeCell;
 
@@ -30,20 +30,21 @@ pub fn init_scheduler() {
     log::info!("initialize scheduler");
     let processor = get_current_processor();
     processor.init_scheduler(Box::new(FiFoScheduler::new(1)));
-    let num_app = get_num_app();
 
-    for app_id in 0..num_app {
-        log::info!("load {}th app", app_id);
-        let app_data = get_app_data(app_id);
-        log::info!("add {}th task", app_id);
+    log::info!("load init_task");
 
+    if let Some(app_inode) = open_file("init_proc", OpenFlags::RDONLY) {
+        log::debug!("open file dead_loop2 success");
+        let all_data = app_inode.read_all();
+        // let task = current_task().unwrap();
         processor.add_task(TaskControlBlock::new_from_elf(
-            app_data, 
-            app_id.to_string(), 
+            &all_data.as_slice(), 
+            "init_task".to_string(), 
             None)
         );
-
-        log::info!("push {}th app", app_id);
+    }
+    else {
+        panic!("not found init proc");
     }
 }
 

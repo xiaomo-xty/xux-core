@@ -14,10 +14,10 @@ pub fn sys_test (
     arg5: usize
 ) {
     let great_cross_page_ptr = great_cross_page_ptr as *const u8;
-    let string_buffer = UserBuffer::new(current_user_token(), great_cross_page_ptr, great_len);
-    let great_str:String = string_buffer.into();
+    // let string_buffer = UserBuffer::new(current_user_token(), great_cross_page_ptr, great_len);
+    // let great_str:String = string_buffer.into();
 
-    println!("{}", great_str);
+    // println!("{}", great_str);
 
     println!("arg2: {}, arg3: {}, arg4: {}, arg5: {}",
         arg2, arg3, arg4, arg5

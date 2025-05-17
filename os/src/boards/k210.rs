@@ -7,3 +7,7 @@ pub const CLOCK_FREQ: usize = 400_000_000; // 400Mhz
 pub const MMIO: &[(usize, usize)] = &[
     (0x0010_0000, 0x00_2000), // VIRT_TEST/RTC  in virt machine
 ];
+
+
+
+type BlockDeviceImpl = crate::drivers::block::SDCardWrapper;

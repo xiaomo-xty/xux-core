@@ -1,12 +1,12 @@
 use core::{cell::UnsafeCell, fmt::{self, Display}, ptr, sync::atomic::{AtomicBool, AtomicPtr, Ordering}, usize};
 
-use alloc::{boxed::Box, format, string::String, sync::{Arc, Weak}, vec::Vec};
+use alloc::{boxed::Box, format, string::String, sync::{Arc, Weak}, vec::{self, Vec}};
 use bitflags::bitflags;
 
-
-use crate::{mm::{address::{PhysPageNum, VirtPageNum}, memory_set::MemorySet, KERNEL_SPACE}, println, processor::get_current_processor, sync::spin::mutex::{IRQSpinLock,IRQSpinLockGuard}, trap::{trap_handler, TrapContext}};
+use crate::{fs::{File, Stdin, Stdout}, mm::{address::{PhysPageNum, VirtPageNum}, memory_set::MemorySet, KERNEL_SPACE}, println, processor::get_current_processor, sync::spin::mutex::{IRQSpinLock,IRQSpinLockGuard}, trap::{trap_handler, TrapContext}};
 
 use super::{allocator::{KernelStackALlocator, KernelStackGuard, RecycleAllocator, TaskHandle, TaskHandleAllocator, TaskID, TrapContextPageAllocator, TrapContextPageGuard, UserStackAlloctor, UserStackGuard}, signal::Signal, yield_current, TaskContext};
+
 
 type Mutex<T> = IRQSpinLock<T>;
 
@@ -36,8 +36,8 @@ impl fmt::Display for TaskState {
 bitflags! {
     pub struct CloneFlags: u32 {
         const CLONE_VM        = 0x00000100; // 共享地址空间
-        // const CLONE_FS        = 0x00000200; // 共享文件系统信息
-        // const CLONE_FILES     = 0x00000400; // 共享文件描述符
+        const CLONE_FS        = 0x00000200; // 共享文件系统信息
+        const CLONE_FILES     = 0x00000400; // 共享文件描述符
         // const CLONE_SIGHAND   = 0x00000800; // 共享信号处理器
         const CLONE_THREAD    = 0x00010000; // 同线程组
         const CLONE_PARENT    = 0x00008000; // 共享父进程
@@ -102,7 +102,7 @@ pub struct TaskControlBlockInner {
     pub state: TaskState,              // 运行状态（就绪/阻塞等）
     pub context: TaskContext,          // 寄存器等硬件上下文
     
-    user_res: Option<TaskUserResource>,
+    pub user_res: Option<TaskUserResource>,
       
 }
 
@@ -130,6 +130,8 @@ pub struct TaskUserResource {
     pub user_stack_guard: UserStackGuard,
     pub entry_point: usize,
     pub trap_context_guard: TrapContextPageGuard,
+
+    pub fd_table: Arc<Mutex <Vec<Option<Arc<dyn File + Send + Sync>>> >>,
 }
 
 
@@ -191,7 +193,11 @@ impl TaskControlBlock {
         unsafe { self.lock_guard.take_lock() }
     }
 
-    pub fn new_from_elf(elf_data: &[u8], app_name: String, parent_task: Option<Arc<TaskControlBlock>>) -> Arc<Self> {
+    pub fn new_from_elf(
+        elf_data: &[u8], 
+        app_name: String, 
+        parent_task: Option<Arc<TaskControlBlock>>
+    ) -> Arc<Self> {
         let task_handle = TaskHandleAllocator::allocate();
         let task_id = task_handle.id();
 
@@ -266,6 +272,10 @@ impl TaskControlBlockInner {
 
     pub fn get_state(&self) -> TaskState {
         self.state
+    }
+
+    pub fn get_user_token(&self) -> usize {
+        self.user_res.as_ref().unwrap().memory_set.lock().token()
     }
 
     fn wait_group_eixt(&mut self) {
@@ -407,6 +417,16 @@ impl TaskUserResource {
             entry_point,
             user_stack_id_allocator,
             trap_context_guard,
+            fd_table: Arc::new(Mutex::new(
+                    alloc::vec![
+                    // 0 -> stdin
+                    Some(Arc::new(Stdin)),
+                    // 1 -> stdout
+                    Some(Arc::new(Stdout)),
+                    // 2 -> stderr
+                    Some(Arc::new(Stdout)),
+                ]
+            )),
         }
     }
 
@@ -430,6 +450,17 @@ impl TaskUserResource {
     pub fn add_child(&mut self, new_child: Arc<TaskControlBlock>) {
         self.children.lock().push(new_child);
     }
+
+    pub fn alloc_fd(&mut self) -> usize {
+        let mut fd_table = self.fd_table.lock();
+        if let Some(fd) = (0..fd_table.len()).find(|fd| fd_table[*fd].is_none()) {
+            fd
+        } else {
+            fd_table.push(None);
+            fd_table.len() - 1
+        }
+    }
+
 
 }
 

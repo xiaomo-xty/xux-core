@@ -9,9 +9,6 @@ pub fn test_runner(tests: &[&dyn Fn()]) {
         // 模拟捕获 panic
         let result = test();
 
-        // crate::io::console::color_println!(crate::io::console::Color::Green, "========[Test passed!]========");
-        
-
     }
     color_println!(crate::io::console::Color::Green, "\n      All tests passed!");
 

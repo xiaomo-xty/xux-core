@@ -12,6 +12,8 @@ mod error;
 
 pub use memory_set::KERNEL_SPACE;
 
+pub use user_ptr::UserBuffer;
+
 
 
 pub fn init() {

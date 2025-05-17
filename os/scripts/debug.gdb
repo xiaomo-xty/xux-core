@@ -2,12 +2,14 @@ echo "starting debug!"
 
 layout src
 
-b heap_test
-c
-b lock
-c
-c
-c
+b open_file
 
-n 5
+# b heap_test
+# c
+# b lock
+# c
+# c
+# c
+
+# n 5
 

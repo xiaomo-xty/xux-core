@@ -1,6 +1,6 @@
 use core::{marker::PhantomData, mem::{self, MaybeUninit}};
-use alloc::{boxed::Box, string::String};
-use super::{error::MemoryError, page_table::copy_from_user};
+use alloc::{boxed::Box, string::String, vec::Vec};
+use super::{error::MemoryError, page_table::{copy_from_user, translated_str}};
 
 /// A zero-cost safe wrapper around user-space memory pointers.
 ///
@@ -91,54 +91,82 @@ where
 
 }
 
-
-/// A contiguous sequence of `T` in user-space memory.
-///
-/// This wrapper guarantees:
-/// 1. All elements are of type `T`
-/// 2. Memory is contiguous (no gaps between elements)
-/// 3. May cross page boundaries but remains logically contiguous
-pub struct UserBuffer<T> {
-    user_ptr: UserPtr<T>,
-    len: usize,
-    _phantom: PhantomData<[T]>,
+impl UserPtr<u8> {
+    pub fn read_to_string(&self) -> String{
+        translated_str(self.token, self.addr)
+    }
 }
 
-impl<T> UserBuffer<T> 
-where
-    T: Copy + Default,
-{
-    /// Creates a new buffer from user-space memory.
-    ///
-    /// # Safety
-    /// Caller must ensure:
-    /// - `ptr` is a valid user-space address
-    /// - Memory range `[ptr, ptr + len*size_of::<T>()]` is accessible
-    pub fn new(token: usize, ptr: *const T, len: usize) -> Self {
-        Self {
-            user_ptr: UserPtr::new(token, ptr),
-            len,
-            _phantom: PhantomData,
+
+
+pub struct UserBuffer {
+    pub buffers: Vec<&'static mut [u8]>,
+}
+
+impl UserBuffer {
+    pub fn new(buffers: Vec<&'static mut [u8]>) -> Self {
+        Self { buffers }
+    }
+    pub fn len(&self) -> usize {
+        let mut total: usize = 0;
+        for b in self.buffers.iter() {
+            total += b.len();
         }
-    }
-
-    /// Reads the entire buffer into kernel space.
-    pub fn read_all(&self) -> Result<Box<[T]>, MemoryError> {
-        self.user_ptr.read_slice(self.len)
+        total
     }
 }
 
-impl From<UserBuffer<u8>> for String {
-    fn from(value: UserBuffer<u8>) -> Self {
-        let bytes = value.read_all()
-        .unwrap_or_else(|_| panic!("Failed to read user buffer"));
+
+
+// /// A contiguous sequence of `T` in user-space memory.
+// ///
+// /// This wrapper guarantees:
+// /// 1. All elements are of type `T`
+// /// 2. Memory is contiguous (no gaps between elements)
+// /// 3. May cross page boundaries but remains logically contiguous
+// pub struct UserBuffer<T> {
+//     user_ptr: UserPtr<T>,
+//     len: usize,
+//     _phantom: PhantomData<[T]>,
+// }
+
+
+
+// impl<T> UserBuffer<T> 
+// where
+//     T: Copy + Default,
+// {
+//     /// Creates a new buffer from user-space memory.
+//     ///
+//     /// # Safety
+//     /// Caller must ensure:
+//     /// - `ptr` is a valid user-space address
+//     /// - Memory range `[ptr, ptr + len*size_of::<T>()]` is accessible
+//     pub fn new(token: usize, ptr: *const T, len: usize) -> Self {
+//         Self {
+//             user_ptr: UserPtr::new(token, ptr),
+//             len,
+//             _phantom: PhantomData,
+//         }
+//     }
+
+//     /// Reads the entire buffer into kernel space.
+//     pub fn read_all(&self) -> Result<Box<[T]>, MemoryError> {
+//         self.user_ptr.read_slice(self.len)
+//     }
+// }
+
+// impl From<UserBuffer<u8>> for String {
+//     fn from(value: UserBuffer<u8>) -> Self {
+//         let bytes = value.read_all()
+//         .unwrap_or_else(|_| panic!("Failed to read user buffer"));
     
-        // 2. UTF-8 验证（零拷贝转换）
-        match core::str::from_utf8(&bytes) {
-            Ok(s) => s.into(),
-            Err(e) => {
-                panic!("Invalid UTF-8 sequence at offset {}: {:?}", e.valid_up_to(), e.error_len());
-            }
-        }
-    }
-}
+//         // 2. UTF-8 验证（零拷贝转换）
+//         match core::str::from_utf8(&bytes) {
+//             Ok(s) => s.into(),
+//             Err(e) => {
+//                 panic!("Invalid UTF-8 sequence at offset {}: {:?}", e.valid_up_to(), e.error_len());
+//             }
+//         }
+//     }
+// }

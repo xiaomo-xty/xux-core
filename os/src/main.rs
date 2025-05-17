@@ -60,11 +60,12 @@ mod trap;
 mod interupt;
 mod syscall;
 mod config;
-mod loader;
 mod timer;
+mod drivers;
 mod register;
 mod tools;
 mod test_framework;
+mod fs;
 
 extern crate alloc;
 mod mm;
@@ -74,12 +75,10 @@ mod boards;
 use core::arch::global_asm;
 
 use processor::init_processor;
-use sync::spin::{mutex::{IRQSpinLock, IRQSpinLockGuard}, ticket::IRQTicketMutex};
 use task::scheduler::schedule_loop;
 
 // os entry
 global_asm!(include_str!("entry.asm"));
-global_asm!(include_str!("link_app.S"));
 
 
 /// - hart_id would be place in a0

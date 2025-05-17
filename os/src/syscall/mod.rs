@@ -2,8 +2,6 @@
 //!
 //! This module provides the core functionality for dispatching system calls
 //! to their respective handlers through a system call table.
-
-mod fs;
 mod test;
 mod registry;
 
